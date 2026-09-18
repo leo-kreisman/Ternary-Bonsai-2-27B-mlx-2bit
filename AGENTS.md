@@ -2,12 +2,26 @@
 
 ## Do this first
 
-Read **[`SETUP.md`](SETUP.md) §1** and run it exactly as written. It is one path,
-copy-paste, no decisions. Then stop.
+**If you want the model served** — which is what a coding agent needs — run this
+one command from the repo root and do not hand-assemble the steps:
+
+```bash
+./serve-mlx.sh              # set up, verify, smoke-test, then serve on :8080
+./serve-mlx.sh --check      # same, but stop before serving
+```
+
+It checks the checkout, reverts a tampered `config.json`, fetches the weights if
+they are missing, builds the venv with the two settings a fresh Mac gets wrong
+(`UV_NATIVE_TLS=1` for the proxy CA, Python 3.11 for the version bound), runs a
+known-answer prompt, and only starts the server if that answer is correct. If it
+prints `[STOP]`, that is the finding — report it, do not work around it.
+
+For everything else, read **[`SETUP.md`](SETUP.md) §1** and run it exactly as
+written. It is one path, copy-paste, no decisions. Then stop.
 
 If you are about to conclude that the setup is broken, read **§2** before saying
 anything. It lists every wrong conclusion this model reliably produces, and all
-eleven are false. You are almost certainly about to reach one of them.
+twelve are false. You are almost certainly about to reach one of them.
 
 **If you are about to run `./setup.sh`: stop and read SETUP.md Step 2-alt.** For
 the MLX path `setup.sh` is optional and actively harmful — it calls
@@ -70,11 +84,25 @@ run is in this one clone. **Do not tell the user to clone
    model, processor, config = load_vl_model('<repo>')
    ```
 
-4. **Never edit `runtime/*.py`, and never edit the expected hashes in
+4. **Never edit `runtime/*.py`, `config.json`, or the expected hashes in
    `assemble.sh`.** Upstream pins the runtime SHA-256s and refuses any revision
    that does not match; this repo's copies match exactly. And hashes in
    `assemble.sh` pin the published bytes — a mismatch means a bad transfer, so
    delete the part and re-run `./assemble.sh`, which re-fetches it.
+
+   **`config.json` is shipped, correct, and load-bearing.** Do not "repair" it,
+   do not rewrite `model_type`, and do not rewrite it back to the value you
+   think it should have. `model_type` must stay `prism_hadamard_qwen35`; the
+   base architecture is carried separately in `base_model_type` (`qwen3_5`) and
+   `chat_config()` swaps them at load time on purpose
+   (`runtime/vision_artifact.py:98-100`). An agent has already been here: it
+   found `model_type: "qwen3_5"`, wrote `prism_hadamard_qwen35` back with a
+   Python one-liner, and printed it as a success. If a `config.json` on disk
+   says `qwen3_5`, the file was edited — restore it with
+   `git checkout -- config.json` rather than patching it further, then check
+   `git status` for whatever else was touched. A pack whose `model_type` is
+   `qwen3_5` is a pack whose Hadamard transform will be skipped, and it loads
+   *successfully* while emitting nonsense.
 
 5. **The Hugging Face model card's Quickstart is a Python snippet, and it is why
    you keep writing Python.** The card's entire Quickstart is:
@@ -103,6 +131,7 @@ Also: do not commit a `.gitattributes` from Hugging Face — it marks
 
 | Task | Command |
 | --- | --- |
+| **Everything: set up, verify, smoke-test, serve** | `./serve-mlx.sh` (`--check` stops before serving) |
 | **MLX, one prompt** | `cd upstream-demo && .venv-vlm/bin/python scripts/mlx_generate_bonsai2.py --model .. -p "..."` |
 | **MLX server** (new, untested) | `cd upstream-demo && .venv-vlm/bin/python scripts/mlx_server_bonsai2.py --model .. --port 8080` |
 | Install, **MLX only** — no `setup.sh` | SETUP.md **Step 2-alt** (two commands) |

@@ -88,9 +88,28 @@ supported by-hand alternative:
 
 ```bash
 cd upstream-demo
-UV_PYTHON=python3 uv venv .venv-vlm
-uv pip install --python .venv-vlm/bin/python -r ../runtime/requirements.txt
+UV_NATIVE_TLS=1 UV_PYTHON=3.11 uv venv .venv-vlm
+UV_NATIVE_TLS=1 uv pip install --python .venv-vlm/bin/python -r ../runtime/requirements.txt
 ```
+
+**`UV_PYTHON=3.11`, not `python3`.** The pack declares `requires-python >=3.11,
+<3.13`, and `uv` will *warn* about a violating interpreter and then build the
+venv anyway. On a Mac whose Homebrew `python3` is 3.14 that produces a 3.14 venv
+holding `cp314` wheels for a runtime that never claimed to support them. Pin it.
+
+**`UV_NATIVE_TLS=1` is not optional behind a TLS-inspecting proxy** (corporate
+VPN, Zscaler/Netskope, some antivirus). `uv` verifies against its own bundled
+Mozilla root list and ignores the macOS keychain, so a proxy's root CA is
+invisible to it and every download dies as:
+
+```
+Caused by: invalid peer certificate: UnknownIssuer
+```
+
+`UV_NATIVE_TLS=1` makes `uv` use the system trust store instead. It is the fix
+for that error, and it is nothing to do with this repo. (`pip` reads the keychain
+already; if you fall back to `pip` and hit the same error, pass
+`--cert /path/to/proxy-ca.pem`.)
 
 **The whole path from nothing — five commands, no GGUF, no Hugging Face, no
 llama.cpp binaries, no Xcode:**
@@ -98,12 +117,17 @@ llama.cpp binaries, no Xcode:**
 ```bash
 git clone https://github.com/leo-kreisman/Ternary-Bonsai-2-27B-mlx-2bit.git
 cd Ternary-Bonsai-2-27B-mlx-2bit
-./assemble.sh
+./assemble.sh          # ~8.6 GB; must print [ok] for model.safetensors
 cd upstream-demo
-UV_PYTHON=python3 uv venv .venv-vlm
-uv pip install --python .venv-vlm/bin/python -r ../runtime/requirements.txt
+UV_NATIVE_TLS=1 UV_PYTHON=3.11 uv venv .venv-vlm
+UV_NATIVE_TLS=1 uv pip install --python .venv-vlm/bin/python -r ../runtime/requirements.txt
 .venv-vlm/bin/python scripts/mlx_generate_bonsai2.py --model .. -p "What is the capital of France?"
 ```
+
+Do not skip or "work around" `./assemble.sh` and then run the runner: without
+`model.safetensors` in the repo root, every loader fails at `mx.load` with a file
+error, which reads like a broken pack. Check it with
+`ls -l model.safetensors` — it is 8,595,477,990 bytes.
 
 If `uv` is missing or *its* Python fetch is what fails, a plain venv works
 identically — no `uv` at all:
@@ -114,8 +138,9 @@ python3.11 -m venv .venv-vlm
 ```
 
 Prefer a Homebrew `python3.11` (`brew install python@3.11`; `uv` is
-`brew install uv`) over macOS's system `python3`, which can be too old for the
-pinned `mlx-vlm==0.6.3` wheels.
+`brew install uv`). The reason is the *upper* bound as much as the lower: the
+pinned `mlx-vlm==0.6.3` wheels want 3.11–3.12, and a modern Homebrew `python3`
+is 3.14, which is outside the pack's declared range.
 
 Use `setup.sh` when you want the **server**, Open WebUI, or the code
 interpreter. Use this when you want the MLX prompt. They are different jobs and
@@ -198,11 +223,37 @@ a second 8.6 GB MLX copy, since this repo already gives you that one.
 
 ## Step 4-alt — Serve with MLX (no GGUF, no llama.cpp)
 
-This repo ships an MLX server: **`scripts/mlx_server_bonsai2.py`**. It is
-OpenAI-compatible and runs the pack on MLX through the pack's own rotated-weight
-loader.
+**One command, from the repo root. This is the whole step:**
 
 ```bash
+./serve-mlx.sh              # set up if needed, verify, smoke-test, serve on :8080
+./serve-mlx.sh --check      # the same, but stop before serving
+./serve-mlx.sh --port 7777  # serve elsewhere
+```
+
+`./serve-mlx.sh` exists so that none of this step is copy-paste. It checks the
+checkout (`config.json` included, and it reverts a tampered one), fetches the
+weights if they are missing, builds the venv with the two settings a fresh Mac
+gets wrong, runs a known-answer prompt through the one-shot runner, and **only
+starts the server if that answer is correct**. If it prints `[STOP]`, read the
+message; it names the cause and the fix.
+
+The two settings, since they are the whole reason the script exists:
+
+| Setting | Without it |
+| --- | --- |
+| `UV_NATIVE_TLS=1` | `uv` checks against its bundled roots, not the macOS keychain, so a proxy's CA is invisible: `invalid peer certificate: UnknownIssuer` |
+| `UV_PYTHON=3.11` | `python3` on a Homebrew Mac can be 3.14, outside the pack's `>=3.11,<3.13`; `uv` warns and builds it anyway |
+
+It also passes `uv venv --allow-existing`, because otherwise `uv` asks
+"Do you want to replace it?" and waits for a human — which stalls an agent.
+
+**Manual equivalent**, if you want to see the pieces or the script will not run:
+
+```bash
+cd upstream-demo
+UV_NATIVE_TLS=1 UV_PYTHON=3.11 uv venv .venv-vlm --allow-existing
+UV_NATIVE_TLS=1 uv pip install --python .venv-vlm/bin/python -r ../runtime/requirements.txt
 .venv-vlm/bin/python scripts/mlx_server_bonsai2.py --model .. --port 8080
 ```
 
@@ -218,7 +269,8 @@ use `run_mlx.sh --image`. Endpoints: `/v1/chat/completions`, `/v1/models`,
 
 > **Read this before you trust it: the file has never been run.** It was written
 > without an Apple Silicon machine available, so it is unverified. **The first
-> command you run must be that `curl`.**
+> command you run must be that `curl`** — which is exactly why `./serve-mlx.sh`
+> runs a known-answer prompt before it serves anything.
 >
 > - Coherent answer → the server works. Wire your agent to it.
 > - **Fluent nonsense → stop.** That is the rotation being skipped, and it means
@@ -272,7 +324,7 @@ reference material.
 
 # 2. THE REFUTATION
 
-Eleven wrong conclusions this model reliably produces. If you or an agent reached
+Twelve wrong conclusions this model reliably produces. If you or an agent reached
 one of these, you were not being stupid — the documentation actively misleads on
 several of them — but none of them is true, and none is worth another minute.
 
@@ -496,6 +548,41 @@ untested); the GGUF path stays the tested server route.
 `run_mlx.sh` runs it on stock MLX — that was always true, and it is why an MLX
 server could be written at all.
 
+### ❌ "The download is broken, or this repo is"
+
+The real thing, seen on a Mac on 2026-09-18:
+
+```
+error: Request failed after 3 retries
+  Caused by: Failed to fetch: https://files.pythonhosted.org/packages/c7/da/32c75222.../pillow-12.3.0-cp314-cp314-macosx_11_0_arm64.whl.metadata
+  Caused by: error sending request for url (https://files.pythonhosted.org/...)
+  Caused by: client error (Connect)
+  Caused by: invalid peer certificate: UnknownIssuer
+```
+
+Read it in two passes.
+
+**`invalid peer certificate: UnknownIssuer` is a TLS interception, not a 404.**
+`files.pythonhosted.org` is fine. `uv` verifies against its own bundled Mozilla
+root list and does not read the macOS keychain, so the root CA installed by a
+corporate VPN, Zscaler/Netskope, or some antivirus is invisible to it and every
+download fails identically. The fix is one variable:
+
+```bash
+UV_NATIVE_TLS=1 uv pip install --python .venv-vlm/bin/python -r ../runtime/requirements.txt
+```
+
+`pip` reads the keychain already; if you fall back to it and see the same error,
+pass `--cert /path/to/proxy-ca.pem`.
+
+**Note `cp314` in that filename.** That wheel is for Python 3.14, which the pack
+does not support (`requires-python >=3.11, <3.13`). It is there because
+`UV_PYTHON=python3` resolved to a Homebrew 3.14, and `uv` warns about that and
+builds the venv anyway. Pin `UV_PYTHON=3.11`.
+
+Neither problem is in this repo. Nothing here contacts `files.pythonhosted.org` —
+`assemble.sh` fetches only from `github.com/<repo>/releases/download/…`.
+
 ## The MLX route, if you specifically want it
 
 ```bash
@@ -537,6 +624,46 @@ runtime files, and the driver **refuses to import anything that does not match**
 | `vision_artifact.py` | `624e78d1fc7a0ddbaa637121ee823209c525b8e89f35fbc68d6d2f3f3fcfd87d` |
 
 "Fixing" one to force a load gets your pack rejected by the official driver.
+
+## Do not edit `config.json` either
+
+`config.json` is shipped from the pack, it is correct, and it is the one file
+that decides whether the Hadamard transform runs at all. Two fields matter:
+
+| Field | Value | Who consumes it |
+| --- | --- | --- |
+| `model_type` | `prism_hadamard_qwen35` | the pack's own loaders; they **refuse** anything else |
+| `base_model_type` | `qwen3_5` | `chat_config()`, which swaps it into `model_type` at load time |
+
+That swap is deliberate (`runtime/vision_artifact.py:98-100`) — mlx-vlm's prompt
+helper keys off `model_type` and needs the base architecture name there. So both
+values are correct simultaneously and neither needs "fixing".
+
+**An agent has already done this by hand.** On 2026-09-18 a Mac agent found
+`model_type: "qwen3_5"` in a working copy, rewrote the file to
+`prism_hadamard_qwen35` with a `json.load` / `json.dump` one-liner, printed the
+new value, and called it fixed. Whether the field was ever genuinely wrong is
+unknowable after the fact — the file is not recoverable from that session. What
+is knowable is that editing it was the wrong move either way:
+
+- If `model_type` really was `qwen3_5`, the file had been edited by something
+  earlier, and the answer is `git checkout -- config.json`, not another patch.
+- If it was already `prism_hadamard_qwen35`, the edit was a no-op on a tracked
+  file that now reads as dirty in `git status`.
+
+Either way, check `git status` after any failed load. A modified `config.json` is
+the first thing to suspect and the first thing to revert:
+
+```bash
+git status --short          # config.json modified? revert it:
+git checkout -- config.json
+python3 -c "import json;c=json.load(open('config.json'));print(c['model_type'],c['base_model_type'])"
+# want: prism_hadamard_qwen35 qwen3_5
+```
+
+The failure mode this protects against is the worst one in this repo: a pack
+whose `model_type` is `qwen3_5` loads **successfully** under stock `mlx_lm` /
+`mlx_vlm`, skips the rotation, and answers fluently and wrongly.
 
 ---
 
