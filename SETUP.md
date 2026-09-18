@@ -22,6 +22,39 @@ an agent can follow one authoritative page instead of guessing.
 | Vision / images | Either path | ✅ Supported |
 | **A served MLX model** | `mlx_lm.server` | ❌ **Refuses by design** |
 
+## 1a. Two runtimes, two formats — the single most common confusion
+
+**Prism ships the same model in two formats, for two different runtimes. They do
+not interchange.** This gets misread constantly, so state it plainly:
+
+| | MLX pack (this repo) | GGUF bands (`PTQ1_0`, `PQ2_0`) |
+| --- | --- | --- |
+| File | `model.safetensors` (8.6 GB) | `*.gguf` (5.9–7.2 GB) |
+| Runtime | **MLX** — `mlx-vlm`, in `.venv-vlm` | **llama.cpp** — `bin/mac/llama-server` |
+| Prism fork it needs | `PrismML-Eng/mlx` (branch `prism`) | `PrismML-Eng/llama.cpp` (branch `prism`) |
+| Served? | **No** — one-shot only | **Yes** — OpenAI-compatible on 8080 |
+| Driver | `scripts/run_mlx.sh` | `scripts/run_llama.sh`, `start_llama_server.sh` |
+
+**"Prism built the MLX version to run in their llama.cpp fork" is false.**
+llama.cpp cannot read an MLX safetensors pack at all — it only reads GGUF. You
+can verify this in the vendored demo, in three greps:
+
+```bash
+cd upstream-demo
+grep -nE '\.gguf' scripts/start_llama_server.sh   # llama.cpp is fed GGUF, only
+grep -nE 'venv|mlx' scripts/run_mlx.sh            # MLX runs under .venv-vlm python
+grep -rn safetensors scripts/                     # -> no matches at all
+```
+
+That last one is the point: **no demo script mentions `safetensors`**, because no
+llama.cpp path touches an MLX pack.
+
+What is true is that **Prism maintains two forks**, and both exist for the same
+underlying reason — the Hadamard-rotated weights need the matching activation
+transform, and neither upstream project carries it. The MLX fork supplies the
+low-bit kernels for the MLX path; the llama.cpp fork supplies them for the GGUF
+path. Two runtimes, two forks. Not one runtime with the other's weights.
+
 ## 2. Why `mlx_lm.server` will not work — this is not your setup being broken
 
 If an agent or a tool tells you `mlx_lm.server` cannot load these weights

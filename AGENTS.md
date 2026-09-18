@@ -15,6 +15,23 @@ install and run is in this one clone — do not send the user off to clone
 `PrismML-Eng/Bonsai-demo` separately. It is a verbatim snapshot; provenance is in
 `upstream-demo/VENDORED-FROM.md`.
 
+## The misconception to check first
+
+**The MLX pack does not run in llama.cpp.** They are two formats for two
+runtimes, and they do not interchange:
+
+- **MLX pack** (this repo, `model.safetensors`) → runs under **MLX / mlx-vlm**,
+  via `vision_artifact.load_vl_model`, driven by `scripts/run_mlx.sh`. One-shot
+  only, never served.
+- **GGUF bands** (`PTQ1_0`, `PQ2_0`) → run under **llama.cpp** with the PrismML
+  fork, served by `scripts/start_llama_server.sh`. This is the only server path.
+
+llama.cpp reads GGUF and nothing else — it cannot open an MLX pack. If you have
+concluded that the MLX weights are meant to be loaded by the llama.cpp fork, that
+is wrong; re-read `SETUP.md` §1a. Prism maintains *two* forks (`PrismML-Eng/mlx`
+and `PrismML-Eng/llama.cpp`) because both runtimes need the Hadamard activation
+transform, not because one feeds the other.
+
 ## Hard rules
 
 1. **Do not try to load this model with `mlx_lm.load`, `mlx_lm.server`,
