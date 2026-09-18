@@ -1,0 +1,18 @@
+# Reassembled weights — not tracked in git.
+# Fetch them from the GitHub Release with ./assemble.sh
+*.safetensors
+*.safetensors.tmp
+
+# Part cache used by assemble.sh
+.parts/
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Local tooling artifacts (not model content)
+.claude/
+system-commandline-sentinel-files/
