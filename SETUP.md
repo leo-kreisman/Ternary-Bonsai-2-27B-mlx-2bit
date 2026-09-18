@@ -68,6 +68,59 @@ if you don't have them).
 > unsupported" — it is a Python-provisioning detail, one line above the model
 > code.
 
+## Step 2-alt — Minimal MLX-only install (no `setup.sh`)
+
+If all you want is the MLX one-shot command, **you do not need `setup.sh` at
+all.** And there is a good reason to skip it: `setup.sh:274` ends by calling
+
+```sh
+BONSAI_FAMILY="$BONSAI_FAMILY" BONSAI_MODEL="$BONSAI_MODEL" sh "$SCRIPT_DIR/scripts/download_models.sh"
+```
+
+so **running `setup.sh` is what starts the ~7.8 GB GGUF download and the
+Hugging Face token prompt.** If you have been trying to avoid both, this is
+where they come from.
+
+The MLX runner needs exactly one thing that is not in git: a venv holding `mlx`,
+`mlx-vlm`, and `transformers`. This repo carries the pinned list at
+`runtime/requirements.txt`, and `run_mlx.sh:63` names this exact command as the
+supported by-hand alternative:
+
+```bash
+cd upstream-demo
+UV_PYTHON=python3 uv venv .venv-vlm
+uv pip install --python .venv-vlm/bin/python -r ../runtime/requirements.txt
+```
+
+**The whole path from nothing — five commands, no GGUF, no Hugging Face, no
+llama.cpp binaries, no Xcode:**
+
+```bash
+git clone https://github.com/leo-kreisman/Ternary-Bonsai-2-27B-mlx-2bit.git
+cd Ternary-Bonsai-2-27B-mlx-2bit
+./assemble.sh
+cd upstream-demo
+UV_PYTHON=python3 uv venv .venv-vlm
+uv pip install --python .venv-vlm/bin/python -r ../runtime/requirements.txt
+.venv-vlm/bin/python scripts/mlx_generate_bonsai2.py --model .. -p "What is the capital of France?"
+```
+
+If `uv` is missing or *its* Python fetch is what fails, a plain venv works
+identically — no `uv` at all:
+
+```bash
+python3.11 -m venv .venv-vlm
+.venv-vlm/bin/pip install -r ../runtime/requirements.txt
+```
+
+Prefer a Homebrew `python3.11` (`brew install python@3.11`; `uv` is
+`brew install uv`) over macOS's system `python3`, which can be too old for the
+pinned `mlx-vlm==0.6.3` wheels.
+
+Use `setup.sh` when you want the **server**, Open WebUI, or the code
+interpreter. Use this when you want the MLX prompt. They are different jobs and
+you do not need both.
+
 ## Step 3 — Get the model
 
 ```bash
@@ -177,7 +230,7 @@ reference material.
 
 # 2. THE REFUTATION
 
-Ten wrong conclusions this model reliably produces. If you or an agent reached
+Eleven wrong conclusions this model reliably produces. If you or an agent reached
 one of these, you were not being stupid — the documentation actively misleads on
 several of them — but none of them is true, and none is worth another minute.
 
@@ -299,6 +352,21 @@ That is the entire invocation. **Do not write a loader, do not instantiate
 
 If you are authoring a Python file to run this model, stop — you have missed
 this script.
+
+### ❌ "You have to run `setup.sh`"
+
+**Not for the MLX path, and running it is probably how you got here.**
+`setup.sh:274` ends by invoking `download_models.sh`, so it is the thing that
+starts the ~7.8 GB GGUF download and raises the Hugging Face token prompt. If
+your goal is the MLX one-liner, `setup.sh` does a great deal you did not ask
+for: `uv`, `.venv`, the llama.cpp fork binaries, the Gatekeeper fix, Open WebUI,
+and a Jupyter venv.
+
+Two commands replace it (Step 2-alt). This is not a shortcut around upstream:
+`run_mlx.sh:63` prints those two commands itself as the by-hand equivalent when
+`.venv-vlm` is missing.
+
+Use `setup.sh` for the **server**. Use Step 2-alt for the **prompt**.
 
 ### ❌ "I need the GGUF file" (when you asked for the MLX path)
 
@@ -502,6 +570,8 @@ vs 81.25; tool calling 74.92 vs 76.74; knowledge/reasoning 79.86 vs 85.55; visio
 | It refetches a second 8.6 GB MLX copy | Step 3 fetches both halves | `BONSAI_SKIP_MLX=1 sh scripts/download_models.sh` |
 | Agent writing a long Python loader | It missed the shipped runner | `.venv-vlm/bin/python scripts/mlx_generate_bonsai2.py --model .. -p "…"` |
 | Agent demands a GGUF for the MLX path | Wrong artifact — MLX needs no GGUF | `./assemble.sh` once, then the one-liner above |
+| `setup.sh` starts a huge download | `setup.sh:274` calls `download_models.sh` | Skip `setup.sh` — use Step 2-alt's two commands |
+| `setup.sh` asks for a token then **fails to connect** | It is trying to download the GGUF from Hugging Face | **Not needed for MLX.** Skip `setup.sh` entirely — Step 2-alt |
 
 ---
 

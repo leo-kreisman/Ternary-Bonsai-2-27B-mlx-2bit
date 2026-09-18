@@ -7,7 +7,12 @@ copy-paste, no decisions. Then stop.
 
 If you are about to conclude that the setup is broken, read **§2** before saying
 anything. It lists every wrong conclusion this model reliably produces, and all
-ten are false. You are almost certainly about to reach one of them.
+eleven are false. You are almost certainly about to reach one of them.
+
+**If you are about to run `./setup.sh`: stop and read SETUP.md Step 2-alt.** For
+the MLX path `setup.sh` is optional and actively harmful — it calls
+`download_models.sh` (`setup.sh:274`) and therefore starts a Hugging Face
+download you may not want and may not be able to reach.
 
 Do not invent another. If §2 doesn't cover it, quote the exact command and the
 exact error, and say what you tried.
