@@ -58,11 +58,27 @@ This is what you want on an 18 GB M3 Pro.
 
 ### Install
 
+**The demo is already in this repository**, at [`upstream-demo/`](upstream-demo/)
+— a verbatim snapshot of upstream `c398c6e` (see
+[`upstream-demo/VENDORED-FROM.md`](upstream-demo/VENDORED-FROM.md)). There is
+nothing to clone:
+
+```bash
+cd upstream-demo
+./setup.sh
+```
+
+If you would rather track the live upstream repo — it does move — clone it
+instead:
+
 ```bash
 git clone https://github.com/PrismML-Eng/Bonsai-demo.git
 cd Bonsai-demo
 ./setup.sh
 ```
+
+All the `./scripts/...` commands in this section then run from whichever of the
+two directories you used.
 
 On macOS, `setup.sh` does this:
 
@@ -204,6 +220,7 @@ applies to this pack.
 Use the demo's driver, which handles the runtime pinning for you:
 
 ```bash
+cd upstream-demo
 ./scripts/run_mlx.sh -p "What is the capital of France?"
 ```
 
@@ -213,6 +230,29 @@ It needs the `.venv-vlm` environment, and runs:
 .venv-vlm/bin/python scripts/mlx_generate_bonsai2.py \
   --model models/Ternary-Bonsai-2-27B-mlx-2bit -p "..."
 ```
+
+**Pointing it at this repository's copy.** The driver defaults to
+`models/Ternary-Bonsai-2-27B-mlx-2bit/` inside the demo directory. Your
+reassembled pack is one level up, in this repo's root. Either:
+
+- **Let the demo fetch its own copy** — `sh scripts/download_models.sh` pulls the
+  same pack from Hugging Face into `upstream-demo/models/` unless
+  `BONSAI_SKIP_MLX` is set. Simplest, at the cost of a second 8.6 GB on disk.
+- **Point `--model` at this repo's reassembled pack**, avoiding the duplicate:
+
+  ```bash
+  cd upstream-demo
+  .venv-vlm/bin/python scripts/mlx_generate_bonsai2.py \
+    --model ../ -p "What is the capital of France?"
+  ```
+
+  This works because `./assemble.sh` in the repo root produces
+  `model.safetensors` alongside `config.json`, `runtime/`, and the tokenizer —
+  exactly the directory layout the loader expects. Run `./assemble.sh` in the
+  repo root first if you haven't.
+
+Either way, the four runtime files must be the pinned ones (§4, "Do not edit the
+runtime files").
 
 ### Dependencies
 

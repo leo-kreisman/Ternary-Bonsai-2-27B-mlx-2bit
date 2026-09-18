@@ -10,6 +10,11 @@ A mirror of the Hugging Face MLX pack `prism-ml/Ternary-Bonsai-2-27B-mlx-2bit`.
 The weights are **not in git**; `./assemble.sh` downloads five release parts and
 reassembles them into `model.safetensors` (8,595,477,990 bytes).
 
+The upstream demo is vendored at **`upstream-demo/`**, so everything needed to
+install and run is in this one clone — do not send the user off to clone
+`PrismML-Eng/Bonsai-demo` separately. It is a verbatim snapshot; provenance is in
+`upstream-demo/VENDORED-FROM.md`.
+
 ## Hard rules
 
 1. **Do not try to load this model with `mlx_lm.load`, `mlx_lm.server`,
@@ -54,9 +59,10 @@ reassembles them into `model.safetensors` (8,595,477,990 bytes).
 | Get the weights | `./assemble.sh` |
 | Verify existing weights | `./assemble.sh --verify` |
 | Re-fetch one bad part | `rm -f .parts/<part> && ./assemble.sh` |
-| Serve (OpenAI-compatible, port 8080) | `./scripts/start_llama_server.sh` in `Bonsai-demo` |
-| One-off prompt | `./scripts/run_llama.sh -p "..."` |
-| One-off via MLX | `./scripts/run_mlx.sh -p "..."` |
+| Install everything | `cd upstream-demo && ./setup.sh` |
+| Serve (OpenAI-compatible, port 8080) | `cd upstream-demo && ./scripts/start_llama_server.sh` |
+| One-off prompt | `cd upstream-demo && ./scripts/run_llama.sh -p "..."` |
+| One-off via MLX | `cd upstream-demo && ./scripts/run_mlx.sh -p "..."` |
 
 ## When the user reports "it won't load"
 

@@ -1,0 +1,81 @@
+# Ternary-Bonsai Community Benchmarks
+
+Benchmark results submitted by the community running [Ternary-Bonsai](https://huggingface.co/collections/prism-ml/ternary-bonsai) models on their own hardware.
+
+## Results
+
+### Ternary-Bonsai-27B
+
+| Hardware | Backend | PP512 (t/s) | TG128 (t/s) | DSpark TG (t/s) | Details |
+|----------|---------|------------:|------------:|----------------:|---------|
+| NVIDIA RTX PRO 6000 Blackwell 96 GB | llama.cpp CUDA | 4,552 | 129.9 | | [link](cuda-rtx-pro-6000-blackwell-linux.md) |
+| NVIDIA L40S 48 GB | llama.cpp CUDA | 3,036 | 74.3 | ~133-175 (1.8-2.4x) | [link](cuda-l40s-linux.md) |
+| NVIDIA RTX 4070 Ti SUPER 16 GB | llama.cpp CUDA (Windows) | 1,717 | 69.6 | | [link](cuda-rtx4070tisuper-windows.md) |
+| NVIDIA RTX A5000 24 GB | llama.cpp CUDA | 1,036 | 48.2 | | [link](cuda-rtxa5000-ubuntu.md) |
+| Apple M5 Max 48 GB | llama.cpp Metal | 816 | 45.8 | ~1.2x code/math only | [link](metal-m5-max-48gb-macos.md) |
+| NVIDIA RTX 5060 Ti 16 GB | llama.cpp CUDA | 1,029 | 44.4 | ~79 (1.78x) | [link](cuda-rtx5060ti-linux.md) |
+| Apple M5 Pro 64 GB | MLX 2-bit | 466 | 29.5 | 34-49 (community dspark-mlx) | [link](mlx-m5-pro-macos.md) |
+| NVIDIA DGX Spark (GB10) | llama.cpp CUDA | 1,005 | 29.2 | ~70.0 (2.45x) | [link](cuda-gb10-27b-linux.md) |
+| Apple M5 Pro 64 GB | llama.cpp Metal | 130 | 26.5 | | [link](mlx-m5-pro-macos.md) |
+| Apple M4 Pro 64 GB | MLX 2-bit | 120 | 24.8 | | [link](mlx-m4-pro-64gb-macos.md) |
+| Apple M4 Pro 64 GB | llama.cpp Metal | 116 | 19.0 | slower on this HW | [link](metal-m4-pro-64gb-macos.md) |
+| NVIDIA GeForce GTX 1080 Ti 11 GB | llama.cpp CUDA | 278 | 20.5 | | [link](cuda-gtx1080ti-linux.md) |
+| Apple M1 Pro 32 GB | MLX 2-bit | 65.1 | 15.0 | ~10 MLX / ~11 code llama.cpp (net slowdown on MLX) | [link](mlx-m1-pro-32gb-macos.md) |
+| Apple M4 24 GB | MLX 2-bit | 65.2 | 12.7 | | [link](mlx-m4-24gb-macos.md) |
+| Apple M3 Pro 18 GB | llama.cpp Metal | 78.6 | 12.6 | | [link](metal-m3-pro-macos.md) |
+
+### 8B and smaller
+
+| Hardware | Backend | 8B PP512 (t/s) | 8B TG128 (t/s) | Details |
+|----------|---------|---------------:|---------------:|---------|
+| NVIDIA RTX 4070 Ti SUPER 16 GB | llama.cpp CUDA (Windows) | 6,675 | 215.7 | [link](cuda-rtx4070tisuper-windows.md) |
+| NVIDIA GeForce GTX 1080 Ti 11 GB | llama.cpp CUDA | 985 | 68.8 | [link](cuda-gtx1080ti-linux.md) |
+| Apple M3 Pro 18 GB | llama.cpp Metal | 288 | 51.3 | [link](metal-m3-pro-macos.md) |
+
+## Available Formats
+
+Since the llama.cpp fork's rebase onto current mainline (releases `prism-b10658` and newer) there are **two ternary GGUF formats**, and benchmark submissions should include both where possible:
+
+- **`PQ2_0`** — our group-128 packing (`*-PQ2_0.gguf`). Smallest file (27B: 6.66 GiB) and usually fastest where supported (CUDA, Metal, CPU, ROCm).
+- **`Q2_0` group-64** — the official upstream format (27B: `Ternary-Bonsai-27B-Q2_g64.gguf`; 8B/4B/1.7B: `*-Q2_0_g64.gguf`). Slightly larger (27B: 7.05 GiB), widest backend coverage (adds Vulkan and SYCL).
+- The **legacy `*-Q2_0.gguf` files** (no `g64` in the name) predate the migration: they still work on the old `prism-v5` releases, but `prism-b10658+` builds refuse them with an error pointing at the two formats above. Don't benchmark those on new builds.
+- **Filename trap:** on the 27B repo a search for `Q2_0` surfaces the legacy file first, and a search for `Q2_0_g64` finds nothing (the 27B file is `Q2_g64`). If the only Q2 file you see is `Ternary-Bonsai-27B-Q2_0.gguf`, keep looking: `hf download prism-ml/Ternary-Bonsai-27B-GGUF --include "*PQ2_0*" --include "*g64*"` fetches both current formats.
+
+Repos:
+
+- **GGUF**:
+  - [prism-ml/Ternary-Bonsai-27B-gguf](https://huggingface.co/prism-ml/Ternary-Bonsai-27B-gguf)
+  - [prism-ml/Ternary-Bonsai-8B-gguf](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf)
+  - [prism-ml/Ternary-Bonsai-4B-gguf](https://huggingface.co/prism-ml/Ternary-Bonsai-4B-gguf)
+  - [prism-ml/Ternary-Bonsai-1.7B-gguf](https://huggingface.co/prism-ml/Ternary-Bonsai-1.7B-gguf)
+- **MLX (2-bit)**:
+  - [prism-ml/Ternary-Bonsai-27B-mlx-2bit](https://huggingface.co/prism-ml/Ternary-Bonsai-27B-mlx-2bit)
+  - [prism-ml/Ternary-Bonsai-8B-mlx-2bit](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-mlx-2bit)
+  - [prism-ml/Ternary-Bonsai-4B-mlx-2bit](https://huggingface.co/prism-ml/Ternary-Bonsai-4B-mlx-2bit)
+  - [prism-ml/Ternary-Bonsai-1.7B-mlx-2bit](https://huggingface.co/prism-ml/Ternary-Bonsai-1.7B-mlx-2bit)
+
+## How to Submit
+
+1. Run `BONSAI_FAMILY=ternary ./setup.sh` to download models and binaries
+2. Pick a template and copy it to a new file:
+   - **llama.cpp** (CPU, Metal, CUDA, Vulkan, ROCm): [TERNARY-TEMPLATE-llama-cpp.md](TERNARY-TEMPLATE-llama-cpp.md)
+   - **MLX (2-bit)** (Apple Silicon only): [TERNARY-TEMPLATE-mlx.md](TERNARY-TEMPLATE-mlx.md)
+
+   Use this naming convention:
+
+   **`<backend>-<hardware>-<os>.md`** (lowercase, dashes for spaces)
+
+   | Backend | Example filename |
+   |---------|-----------------|
+   | MLX | `mlx-m4-pro-macos.md` |
+   | CUDA | `cuda-rtx4090-linux.md` |
+   | Metal | `metal-m2-ultra-macos.md` |
+   | Vulkan | `vulkan-rx7900xtx-linux.md` |
+   | ROCm/HIP | `rocm-mi300x-linux.md` |
+   | CPU (x86) | `cpu-i9-14900k-linux.md` |
+   | CPU (ARM) | `cpu-m4-pro-macos.md` |
+
+3. Follow the instructions in the template to run benchmarks and fill in results
+4. Open a PR to this repo
+
+All three model sizes (8B, 4B, 1.7B) are preferred. Skip any that don't fit in memory or are too slow.
