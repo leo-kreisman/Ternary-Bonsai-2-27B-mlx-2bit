@@ -7,7 +7,7 @@ copy-paste, no decisions. Then stop.
 
 If you are about to conclude that the setup is broken, read **§2** before saying
 anything. It lists every wrong conclusion this model reliably produces, and all
-seven are false. You are almost certainly about to reach one of them.
+ten are false. You are almost certainly about to reach one of them.
 
 Do not invent another. If §2 doesn't cover it, quote the exact command and the
 exact error, and say what you tried.

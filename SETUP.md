@@ -159,6 +159,17 @@ Open WebUI: `./scripts/start_openwebui.sh`. Point it at `http://localhost:8080/v
 ./scripts/run_llama.sh -p "What is the capital of France?"
 ```
 
+**On MLX it is also one command, and no script:**
+
+```bash
+.venv-vlm/bin/python scripts/mlx_generate_bonsai2.py --model .. -p "What is the capital of France?"
+```
+
+`scripts/mlx_generate_bonsai2.py` is the complete MLX driver. It applies the
+Hadamard rotation through the bundled loader, verifies the runtime against
+`bonsai2-runtime.sha256`, handles the thinking phase, and accepts images. **Do
+not write your own Python to load this model.** See §2.
+
 **That is the whole path.** Everything below is either the refutation or
 reference material.
 
@@ -166,7 +177,7 @@ reference material.
 
 # 2. THE REFUTATION
 
-Eight wrong conclusions this model reliably produces. If you or an agent reached
+Ten wrong conclusions this model reliably produces. If you or an agent reached
 one of these, you were not being stupid — the documentation actively misleads on
 several of them — but none of them is true, and none is worth another minute.
 
@@ -258,6 +269,51 @@ One more thing that is not the model's fault: if `setup.sh` dies **creating the
 venv**, `uv` was fetching a managed CPython (`setup.sh:250`). That is a Python
 provisioning failure one line above any model code. Run
 `UV_PYTHON=python3 ./setup.sh` — see Step 2.
+
+### ❌ "You have to write a Python script to run it on MLX"
+
+**No. The runner is already written and shipped. Call it.** Agents that do not
+notice `scripts/mlx_generate_bonsai2.py` write a 200-line loader from scratch,
+which either duplicates it or skips the rotation. The whole interface is
+`--model` and `-p`:
+
+```bash
+cd upstream-demo
+.venv-vlm/bin/python scripts/mlx_generate_bonsai2.py --model .. -p "What is the capital of France?"
+```
+
+That is the entire invocation. **Do not write a loader, do not instantiate
+`mlx_vlm` yourself, do not reimplement `generate`.** Everything it accepts, from
+`scripts/mlx_generate_bonsai2.py:81-89`:
+
+| Flag | Meaning |
+| --- | --- |
+| `-p`, `--prompt` | required |
+| `--model` | required — the pack directory (`..` from `upstream-demo/`) |
+| `--image PATH` | repeatable; pairs the vision tower |
+| `-n`, `--max-tokens` | default 2048 |
+| `--temp` | default 1.0 |
+| `--top-p` | default 0.95 |
+| `--top-k` | default 20 |
+| `--no-think` | skip the thinking phase |
+
+If you are authoring a Python file to run this model, stop — you have missed
+this script.
+
+### ❌ "I need the GGUF file" (when you asked for the MLX path)
+
+**Only if you want a *server*.** There are two separate artifacts and neither
+one needs the other:
+
+| You want | You need | You do **not** need |
+| --- | --- | --- |
+| MLX, one prompt | `model.safetensors` from `./assemble.sh` | any GGUF |
+| An HTTP server on 8080 | a GGUF band + `mmproj` | `model.safetensors` |
+
+So an agent demanding a GGUF while you asked for the inline MLX command is
+answering a different question. For MLX: run `./assemble.sh` **once** at the repo
+root, then the one-liner above. No GGUF, no `download_models.sh`, no Hugging
+Face.
 
 ### ❌ "Vision isn't included in the MLX pack"
 
@@ -444,6 +500,8 @@ vs 81.25; tool calling 74.92 vs 76.74; knowledge/reasoning 79.86 vs 85.55; visio
 | `setup.sh` dies creating the venv | `uv` fetching a managed CPython 3.11 | `UV_PYTHON=python3 ./setup.sh` |
 | Want **no** Hugging Face contact | Supported: point at a local GGUF | `BONSAI_GGUF=… BONSAI_MMPROJ=… ./scripts/start_llama_server.sh` — Step 3-alt |
 | It refetches a second 8.6 GB MLX copy | Step 3 fetches both halves | `BONSAI_SKIP_MLX=1 sh scripts/download_models.sh` |
+| Agent writing a long Python loader | It missed the shipped runner | `.venv-vlm/bin/python scripts/mlx_generate_bonsai2.py --model .. -p "…"` |
+| Agent demands a GGUF for the MLX path | Wrong artifact — MLX needs no GGUF | `./assemble.sh` once, then the one-liner above |
 
 ---
 
