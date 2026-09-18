@@ -14,6 +14,16 @@ UNTESTED. This file was written without an Apple Silicon machine available, so i
 been executed. Validate it with the curl in `--help` before trusting it with an agent.
 
 Text only. Images are not wired into the HTTP path; use `scripts/run_mlx.sh --image` for those.
+
+Thinking is supported, because the pack's own chat template supports it: it is **on by
+default**, and `reasoning_effort` selects xhigh (the template's default), medium or low
+(`chat_template.jinja:46-55`, `:165-169`). Pass `enable_thinking: false` per request,
+`chat_template_kwargs`, or start the server with `--no-think`. Replies therefore contain a
+` thinking... response` block unless you turn it off.
+
+Not wired: tool calling. The pack's template does handle a `tools` argument
+(`chat_template.jinja:57`), so it is reachable, but this server does not pass one or parse
+`tool_calls` back out. A client that needs function calling will not get it yet.
 """
 import argparse
 import hashlib
@@ -33,7 +43,18 @@ from pathlib import Path
 os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
-DEFAULTS = {"temp": 1.0, "top_p": 0.95, "top_k": 20, "max_tokens": 4096}
+DEFAULTS = {
+    "temp": 1.0,
+    "top_p": 0.95,
+    "top_k": 20,
+    "max_tokens": 4096,
+    # Thinking is ON in this pack's chat template unless `enable_thinking` is explicitly
+    # false (`chat_template.jinja:46`, `:165-169`), and `reasoning_effort` is one of
+    # xhigh (default), medium, low. These defaults match the template's own, so a client
+    # that says nothing gets exactly what `run_mlx.sh` would have produced.
+    "enable_thinking": True,
+    "reasoning_effort": None,
+}
 
 MANIFEST = Path(__file__).resolve().parent / "bonsai2-runtime.sha256"
 
@@ -126,17 +147,30 @@ class Bonsai:
         self.model, self.processor, self.config = load_vl_model(str(self.pack))
         print(f"loaded {self.pack.name} in {time.time() - started:.0f}s", file=sys.stderr)
 
-    def build_prompt(self, messages):
+    def build_prompt(self, messages, enable_thinking=True, reasoning_effort=None):
         """Render an OpenAI messages list with the pack's own chat template.
 
-        The tokenizer path is preferred because it handles a system prompt and multi-turn
-        history, which a coding agent needs. mlx-vlm's helper only takes one user prompt, so it
-        is the fallback for a tokenizer that carries no template.
+        The tokenizer path is preferred because it handles a system prompt, multi-turn
+        history, and the thinking controls, which a coding agent needs. mlx-vlm's helper
+        only takes one user prompt, so it is the fallback for a tokenizer with no template
+        -- and that fallback cannot express `enable_thinking`, so it always thinks.
+
+        `enable_thinking` and `reasoning_effort` are the pack's own template variables
+        (`chat_template.jinja:46-55`, `:165-169`); passing them is what makes thinking
+        controllable. `reasoning_effort` must be xhigh, medium or low, and the template
+        raises on anything else, so it is validated here rather than in the client.
         """
         tokenizer = getattr(self.processor, "tokenizer", None)
+        if reasoning_effort is not None and reasoning_effort not in ("xhigh", "medium", "low"):
+            raise ValueError(
+                f"reasoning_effort must be xhigh, medium or low, not {reasoning_effort!r}"
+            )
         if tokenizer is not None and getattr(tokenizer, "chat_template", None):
+            kwargs = {"enable_thinking": bool(enable_thinking)}
+            if reasoning_effort:
+                kwargs["reasoning_effort"] = reasoning_effort
             return tokenizer.apply_chat_template(
-                messages, add_generation_prompt=True, tokenize=False
+                messages, add_generation_prompt=True, tokenize=False, **kwargs
             )
         last_user = ""
         for m in reversed(messages):
@@ -147,8 +181,9 @@ class Bonsai:
             self.processor, self._chat_config(self.config), last_user, num_images=0
         )
 
-    def complete(self, messages, max_tokens, temperature, top_p, top_k):
-        prompt = self.build_prompt(messages)
+    def complete(self, messages, max_tokens, temperature, top_p, top_k,
+                 enable_thinking=True, reasoning_effort=None):
+        prompt = self.build_prompt(messages, enable_thinking, reasoning_effort)
         with GEN_LOCK:
             out = self._generate(
                 self.model,
@@ -230,11 +265,26 @@ class Handler(BaseHTTPRequestHandler):
         # `top_k` is not an OpenAI field; mlx-vlm takes it, so honour it when a client sends it.
         top_k = int(req.get("top_k") or d["top_k"])
 
+        # Thinking. Three ways in, because clients disagree about where this goes:
+        #   - a top-level `enable_thinking` / `reasoning_effort` (plainest)
+        #   - `chat_template_kwargs` (what vLLM and SGLang clients send)
+        #   - nothing at all, which leaves the pack's own default: thinking on, effort xhigh
+        ctk = req.get("chat_template_kwargs") or {}
+        if not isinstance(ctk, dict):
+            ctk = {}
+        enable_thinking = req.get("enable_thinking", ctk.get("enable_thinking", d["enable_thinking"]))
+        reasoning_effort = req.get("reasoning_effort", ctk.get("reasoning_effort", d["reasoning_effort"]))
+        if reasoning_effort is not None and reasoning_effort not in ("xhigh", "medium", "low"):
+            return self._error(400, "reasoning_effort must be xhigh, medium or low")
+
         cid = "chatcmpl-" + uuid.uuid4().hex[:24]
         created = int(time.time())
 
         try:
-            text, usage = self.bonsai.complete(messages, max_tokens, temperature, top_p, top_k)
+            text, usage = self.bonsai.complete(
+                messages, max_tokens, temperature, top_p, top_k,
+                bool(enable_thinking), reasoning_effort,
+            )
         except Exception as exc:  # surface the real reason rather than a bare 500
             return self._error(500, f"{type(exc).__name__}: {exc}", "server_error")
 
@@ -283,6 +333,8 @@ def serve(args):
         "temp": args.temp,
         "top_p": args.top_p,
         "top_k": args.top_k,
+        "enable_thinking": not args.no_think,
+        "reasoning_effort": args.reasoning_effort,
     })
     Handler.bonsai = bonsai
     Handler.model_id = args.served_model_name
@@ -316,6 +368,10 @@ then point a coding agent at http://127.0.0.1:8080/v1""",
     parser.add_argument("--temp", type=float, default=DEFAULTS["temp"])
     parser.add_argument("--top-p", type=float, default=DEFAULTS["top_p"])
     parser.add_argument("--top-k", type=int, default=DEFAULTS["top_k"])
+    parser.add_argument("--no-think", action="store_true",
+                        help="default every request to enable_thinking=false")
+    parser.add_argument("--reasoning-effort", choices=("xhigh", "medium", "low"), default=None,
+                        help="default reasoning effort (the pack's own default is xhigh)")
     serve(parser.parse_args())
 
 

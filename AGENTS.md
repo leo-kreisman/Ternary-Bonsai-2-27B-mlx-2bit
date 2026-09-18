@@ -21,7 +21,7 @@ written. It is one path, copy-paste, no decisions. Then stop.
 
 If you are about to conclude that the setup is broken, read **§2** before saying
 anything. It lists every wrong conclusion this model reliably produces, and all
-twelve are false. You are almost certainly about to reach one of them.
+thirteen are false. You are almost certainly about to reach one of them.
 
 **If you are about to run `./setup.sh`: stop and read SETUP.md Step 2-alt.** For
 the MLX path `setup.sh` is optional and actively harmful — it calls

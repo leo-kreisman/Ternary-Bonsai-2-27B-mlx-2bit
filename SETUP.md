@@ -324,7 +324,7 @@ reference material.
 
 # 2. THE REFUTATION
 
-Twelve wrong conclusions this model reliably produces. If you or an agent reached
+Thirteen wrong conclusions this model reliably produces. If you or an agent reached
 one of these, you were not being stupid — the documentation actively misleads on
 several of them — but none of them is true, and none is worth another minute.
 
@@ -596,6 +596,28 @@ whatever is already in the venv.
 
 Neither problem is in this repo. Nothing here contacts `files.pythonhosted.org` —
 `assemble.sh` fetches only from `github.com/<repo>/releases/download/…`.
+
+### ❌ "Bonsai 2 doesn't support thinking"
+
+The opposite. This pack ships a reasoning chat template and thinking is **on by
+default** — `enable_thinking` being *undefined* counts as true:
+
+| Where | What it says |
+| --- | --- |
+| `chat_template.jinja:46` | `{%- if enable_thinking is undefined or enable_thinking is true %}` |
+| `chat_template.jinja:47-55` | `reasoning_effort` is `xhigh` (the default), `medium`, or `low`; the template **raises** on anything else |
+| `chat_template.jinja:165-169` | with `enable_thinking is false` it emits the pre-closed ` thinking\n\n</think>\n\n`; otherwise it opens ` thinking\n` and the model reasons |
+| `mlx_generate_bonsai2.py:89,134-135` | `--no-think` exists and works by appending that same pre-closed block |
+| `chat_template.jinja:57` | the template also accepts a `tools` argument |
+
+That last row is the tell: **a flag to skip thinking is proof that thinking is
+the default.** Nobody ships `--no-think` for a model that cannot think.
+
+So a reply containing a ` thinking...</think>` block is not a bug and not
+mismatched weights — it is the pack doing what it says. Turn it off with
+`enable_thinking: false` in the request, `chat_template_kwargs`, or
+`./serve-mlx.sh` → `scripts/mlx_server_bonsai2.py --no-think`, and pick the
+effort with `--reasoning-effort low|medium|xhigh`.
 
 ## The MLX route, if you specifically want it
 
