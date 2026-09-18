@@ -22,10 +22,12 @@ ternary MLX weights for [prism-ml/Ternary-Bonsai-2-27B-mlx-2bit](https://hugging
 > methodology and benchmark detail. This repository only redistributes the
 > weights from GitHub Releases.
 
-**Want to actually run it? Go to [`SETUP.md`](SETUP.md).** Short version: the
-supported path on macOS is **llama.cpp with the PrismML fork**, and
-**`mlx_lm.server` cannot serve this model** — that is upstream's design, not a
-broken setup.
+**Want to actually run it? Go to [`SETUP.md`](SETUP.md).** §1 is the path —
+copy-paste, one route, no decisions. §2 is the refutation: six wrong conclusions
+this model reliably produces, including that `mlx_lm.server` can serve it and
+that the MLX pack runs in llama.cpp. Both are false.
+
+Agents: read [`AGENTS.md`](AGENTS.md) first.
 
 ## Read this before you try to load it
 
