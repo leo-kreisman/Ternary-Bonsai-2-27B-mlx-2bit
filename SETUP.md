@@ -580,6 +580,20 @@ does not support (`requires-python >=3.11, <3.13`). It is there because
 `UV_PYTHON=python3` resolved to a Homebrew 3.14, and `uv` warns about that and
 builds the venv anyway. Pin `UV_PYTHON=3.11`.
 
+**Its sibling, and the one you will hit next: `503 Service Unavailable`.** Same
+host, same step, no certificate error:
+
+```
+Caused by: Failed to fetch: https://files.pythonhosted.org/packages/95/47/196df6.../mlx_vlm-0.6.3-py3-none-any.whl.metadata
+Caused by: HTTP status server error (503 Service Unavailable) for url (...)
+```
+
+That is PyPI's CDN refusing one wheel while serving others in the same run —
+`✓ mlx==0.32.0` then a 503 on `mlx-vlm` is the normal shape of it. Nothing to
+diagnose: wait a minute and re-run. `./serve-mlx.sh` now retries the install four
+times with a delay, and because installs are resumable, a re-run continues from
+whatever is already in the venv.
+
 Neither problem is in this repo. Nothing here contacts `files.pythonhosted.org` —
 `assemble.sh` fetches only from `github.com/<repo>/releases/download/…`.
 

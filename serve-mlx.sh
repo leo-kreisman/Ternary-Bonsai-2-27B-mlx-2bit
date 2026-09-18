@@ -79,6 +79,34 @@ die() {
   exit 1
 }
 
+# A 503 from files.pythonhosted.org is transient, and it is not polite about it:
+# in one real run the CDN served `mlx==0.32.0` and then refused `mlx-vlm` in the
+# same install with "503 Service Unavailable". Retrying is the entire fix, and a
+# human should not have to re-run the script to get it.
+retry_install() {
+  _attempt=1
+  while [ "$_attempt" -le 4 ]; do
+    if "$@"; then return 0; fi
+    [ "$_attempt" -eq 4 ] && break
+    _wait=$(( _attempt * 10 ))
+    note "attempt $_attempt failed; retrying in ${_wait}s"
+    sleep "$_wait"
+    _attempt=$(( _attempt + 1 ))
+  done
+  return 1
+}
+
+INSTALL_FAIL_HELP="the install failed on all 4 attempts.
+
+  If the last error was '503 Service Unavailable' or 'HTTP status server error',
+  that came from PyPI's CDN and is transient. Wait a minute and re-run:
+      ./serve-mlx.sh --port $PORT
+  Anything already installed is kept, so a re-run resumes rather than restarts.
+
+  If the last error was 'invalid peer certificate: UnknownIssuer', then
+  UV_NATIVE_TLS=1 did not take effect - send the output back.
+  If it was a 404 for a specific wheel, send that URL back."
+
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
@@ -213,8 +241,9 @@ else
   If it failed with 'invalid peer certificate: UnknownIssuer', UV_NATIVE_TLS=1
   is already set here, so the proxy is blocking the interpreter download itself;
   use a local 3.11 via the brew line above."
-    note "uv pip install -r runtime/requirements.txt"
-    uv pip install --python "$VENV/bin/python" -r "$REQS"
+    note "uv pip install -r runtime/requirements.txt (4 attempts; 503s are transient)"
+    retry_install uv pip install --python "$VENV/bin/python" -r "$REQS" \
+      || die "$INSTALL_FAIL_HELP"
   else
     PY311="$(command -v python3.11 || command -v python3.12 || true)"
     [ -n "$PY311" ] || die \
@@ -226,8 +255,9 @@ else
     note "$PY311 -m venv $VENV"
     "$PY311" -m venv "$VENV"
     "$VENV/bin/pip" install --quiet --upgrade pip
-    note "pip install -r runtime/requirements.txt"
-    "$VENV/bin/pip" install -r "$REQS"
+    note "pip install -r runtime/requirements.txt (4 attempts; 503s are transient)"
+    retry_install "$VENV/bin/pip" install -r "$REQS" \
+      || die "$INSTALL_FAIL_HELP"
   fi
 fi
 
