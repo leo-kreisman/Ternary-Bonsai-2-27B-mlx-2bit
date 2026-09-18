@@ -48,5 +48,10 @@ cp -r /tmp/bonsai-demo/. upstream-demo/ && rm -rf upstream-demo/.git
 Upstream's [`PACK-RUNTIME.md`](../PACK-RUNTIME.md) is **not** in this directory;
 it ships with the MLX pack (the parent repo). That file tells you to load the
 pack with `artifact.load_model`, **which fails on this pack** — see
-[`../SETUP.md`](../SETUP.md) §4. Where the pack's own docs and this demo
+[`../SETUP.md`](../SETUP.md) §2. Where the pack's own docs and this demo
 disagree, the demo is right.
+
+Also note `scripts/start_mlx_server.sh` refuses `bonsai2`. That is a refusal to
+*serve*, not a statement that the pack is not an MLX model — see
+[`../SETUP.md`](../SETUP.md) §2. One-shot MLX (`scripts/run_mlx.sh`) is supported
+and runs on stock MLX.

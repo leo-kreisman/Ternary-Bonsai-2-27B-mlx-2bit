@@ -85,9 +85,33 @@ reference material.
 
 # 2. THE REFUTATION
 
-Six wrong conclusions this model reliably produces. If you or an agent reached
+Seven wrong conclusions this model reliably produces. If you or an agent reached
 one of these, you were not being stupid — the documentation actively misleads on
 several of them — but none of them is true, and none is worth another minute.
+
+### ❌ "This isn't an MLX model" / "MLX is unsupported for it"
+
+**False, and this is the one currently costing you time.** This **is** an MLX
+model. `library_name` is `mlx`, the weights are MLX safetensors, the pack's
+loader builds an `mlx_vlm` model, and Bonsai 2 runs on **stock MLX** — the
+PrismML `mlx` fork is for the 1-bit family, not this pack. From `run_mlx.sh:56`:
+
+```sh
+# Bonsai 2 packs carry their own Hadamard-aware loader and run on stock MLX through
+# mlx-vlm, which lives in .venv-vlm; the fork in .venv is for the 1-bit family.
+```
+
+The true statement is far narrower: the stock `mlx_lm` / `mlx_vlm` **server and
+loader entry points** cannot be pointed at this pack, because they apply no
+rotation transform. "No MLX server exists" is not "not an MLX model", and it is
+not "MLX is broken here". One-shot MLX works right now:
+
+```bash
+cd upstream-demo && ./scripts/run_mlx.sh -p "What is the capital of France?"
+```
+
+If a summary of this repo told you MLX is out, that summary over-read §3's
+"one-shot only" line — which is about the *server*, not the *model*.
 
 ### ❌ "`mlx_lm.server` would load these weights cleanly"
 
@@ -163,12 +187,13 @@ That last one is the argument: **no demo script mentions `safetensors`.**
 What's true is that **Prism maintains two forks**, both because the Hadamard
 rotation needs a transform neither upstream project carries:
 
-| Format | Runtime | Prism fork |
+| Format | Runtime | Fork needed |
 | --- | --- | --- |
-| `model.safetensors` (MLX, 8.6 GB) | MLX / `mlx-vlm` | `PrismML-Eng/mlx` |
-| `*.gguf` (`PTQ1_0`, `PQ2_0`) | llama.cpp | `PrismML-Eng/llama.cpp` |
+| `model.safetensors` (MLX, 8.6 GB) | MLX / `mlx-vlm`, one-shot | **No** — stock MLX (`PrismML-Eng/mlx` is for the 1-bit family) |
+| `*.gguf` (`PTQ1_0`, `PQ2_0`) | llama.cpp | **Yes** — `PrismML-Eng/llama.cpp` |
 
-Two runtimes, two forks. Not one runtime loading the other's weights.
+Two formats, two runtimes. Not one runtime loading the other's weights. Both are
+real and both are supported; only the second can serve.
 
 ### ❌ "Stock llama.cpp is fine for the GGUF"
 
@@ -194,10 +219,11 @@ survives being copied around.
 | Runtime | MLX / `mlx-vlm`, `.venv-vlm` | llama.cpp, `bin/mac/llama-server` |
 | Served? | **No** — one-shot only | **Yes** — port 8080 |
 | Driver | `scripts/run_mlx.sh` | `scripts/run_llama.sh` |
-| Prism fork | `PrismML-Eng/mlx` | `PrismML-Eng/llama.cpp` |
+| Fork needed | **No** — stock MLX + `mlx-vlm` | **Yes** — `PrismML-Eng/llama.cpp` |
 
-The MLX pack is **one-shot only**. If you want a server, it is the GGUF path, full
-stop.
+The MLX pack is **one-shot only**. If you want a server, it is the GGUF path,
+full stop. **"One-shot only" means no server — it does not mean MLX is
+unsupported.** It is an MLX model and `run_mlx.sh` runs it on stock MLX.
 
 ## The MLX route, if you specifically want it
 

@@ -7,9 +7,9 @@ copy-paste, no decisions. Then stop.
 
 If you are about to conclude that the setup is broken, read **§2** before saying
 anything. It lists every wrong conclusion this model reliably produces, and all
-six are false. You are almost certainly about to reach one of them.
+seven are false. You are almost certainly about to reach one of them.
 
-Do not invent a seventh. If §2 doesn't cover it, quote the exact command and the
+Do not invent another. If §2 doesn't cover it, quote the exact command and the
 exact error, and say what you tried.
 
 ## What this repository is
@@ -35,6 +35,12 @@ run is in this one clone. **Do not tell the user to clone
    `mlx_lm.generate`.** The weights are Hadamard-rotated and those loaders apply
    no matching transform. They either fail or emit confident nonsense. Upstream's
    own MLX server script hard-refuses `bonsai2`. For a server, use the GGUF path.
+
+   **This is not "MLX is unsupported" and not "it isn't an MLX model".** It is an
+   MLX model and runs on **stock MLX** via `./scripts/run_mlx.sh` (the PrismML
+   `mlx` fork is for the 1-bit family, not this pack). Only the stock *loader and
+   server entry points* are excluded, and only because they skip the rotation.
+   Do not report that MLX is out.
 
 3. **Never call `artifact.load_model` on this pack.** `PACK-RUNTIME.md` says to;
    it is stale. `runtime/artifact.py:81-85` rejects anything that is not

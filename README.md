@@ -31,19 +31,22 @@ Agents: read [`AGENTS.md`](AGENTS.md) first.
 
 ## Read this before you try to load it
 
-**This is not a drop-in MLX model.** Two things will bite you:
+**Yes, this is an MLX model, and it runs on stock MLX.** `library_name` is `mlx`,
+the weights are MLX safetensors, and upstream's `run_mlx.sh` drives it on stock
+MLX through the `mlx-vlm` venv. You do **not** need the PrismML `mlx` fork for
+this pack — that fork is for the 1-bit family, not this one. What follows is two
+narrow exceptions, not a claim that MLX is unsupported.
 
-**1. Stock `mlx-lm` will not run it.** The weights are stored in a rotated
-basis: every matrix was transformed by a blockwise Hadamard rotation before the
-ternary assignment, and the runtime must apply the matching transform to
-activations. Upstream states it plainly — the packed model declares its
+**1. The stock `mlx_lm` loaders will not run it.** The weights are stored in a
+rotated basis: every matrix was transformed by a blockwise Hadamard rotation
+before the ternary assignment, and the runtime must apply the matching transform
+to activations. Upstream states it plainly — the packed model declares its
 rotation as metadata, so *"a runtime either applies the matching transform or
-refuses to load the file."* You need one of:
+refuses to load the file."* The runner that does this is the **bundled runtime**
+in [`runtime/`](runtime/), used by `run_mlx.sh`.
 
-- the **bundled runtime** in [`runtime/`](runtime/) (the easy path, see below), or
-- the **MLX fork** with low-bit kernels: <https://github.com/PrismML-Eng/mlx>
-
-The ordinary `mlx_lm.load("...")` snippet will not work.
+The ordinary `mlx_lm.load("...")` snippet will not work. That is a statement
+about the *loader*, not about MLX.
 
 **2. Use `vision_artifact.load_vl_model`, NOT `artifact.load_model`.**
 [`PACK-RUNTIME.md`](PACK-RUNTIME.md) tells you to call `artifact.load_model`.
@@ -78,9 +81,13 @@ Note the three return values: `processor` is a built `Qwen3VLProcessor`, so the
 vision path works without `AutoProcessor` and without torch.
 
 **`mlx_lm.server` will not serve this model, and neither will `mlx_lm.load`.**
-This is not a limitation of your setup — upstream's `scripts/start_mlx_server.sh`
-explicitly refuses `bonsai2`, and the supported server path is llama.cpp. See
-[`SETUP.md`](SETUP.md) for how to actually get a server running.
+This is not a limitation of your setup, and it does **not** mean MLX is
+unsupported — upstream's `scripts/start_mlx_server.sh` explicitly refuses
+`bonsai2` because those server entry points apply no rotation transform. The
+pack is an MLX model; what is missing is an MLX *server* for it. One-shot MLX
+works today (`./scripts/run_mlx.sh -p "..."`), and the supported server path is
+llama.cpp. See [`SETUP.md`](SETUP.md) §1 for the server, §2 for this exact
+confusion.
 
 Install `runtime/requirements.txt` on Apple Silicon first. It pins exact
 versions, and they matter:
