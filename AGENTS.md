@@ -14,6 +14,14 @@ the MLX path `setup.sh` is optional and actively harmful — it calls
 `download_models.sh` (`setup.sh:274`) and therefore starts a Hugging Face
 download you may not want and may not be able to reach.
 
+**If the user wants a server** (a coding agent needs one), there are two, and
+they are different artifacts:
+
+- **Tested:** llama.cpp + GGUF, `./scripts/start_llama_server.sh`, port 8080.
+- **MLX:** `scripts/mlx_server_bonsai2.py`, port 8080 — written by this repo,
+  **new and never run**. Validate it with the curl in SETUP.md Step 4-alt before
+  wiring anything to it. Fluent nonsense means it is skipping the rotation: stop.
+
 Do not invent another. If §2 doesn't cover it, quote the exact command and the
 exact error, and say what you tried.
 
@@ -28,7 +36,7 @@ provenance in `upstream-demo/VENDORED-FROM.md`). Everything needed to install an
 run is in this one clone. **Do not tell the user to clone
 `PrismML-Eng/Bonsai-demo`** — it is public, but it is already here.
 
-## The four things that will get you stuck
+## The five things that will get you stuck
 
 1. **The MLX pack does not run in llama.cpp.** llama.cpp reads GGUF and nothing
    else. Two formats, two runtimes: the MLX pack runs under MLX/`mlx-vlm`
@@ -39,7 +47,9 @@ run is in this one clone. **Do not tell the user to clone
 2. **Never load this pack with `mlx_lm.load`, `mlx_lm.server`, or
    `mlx_lm.generate`.** The weights are Hadamard-rotated and those loaders apply
    no matching transform. They either fail or emit confident nonsense. Upstream's
-   own MLX server script hard-refuses `bonsai2`. For a server, use the GGUF path.
+   own MLX server script hard-refuses `bonsai2`. For a **tested** server, use the
+   GGUF path; for an MLX server, this repo ships one (see 5 below and SETUP.md
+   Step 4-alt).
 
    **This is not "MLX is unsupported" and not "it isn't an MLX model".** It is an
    MLX model and runs on **stock MLX** via `./scripts/run_mlx.sh` (the PrismML
@@ -66,6 +76,26 @@ run is in this one clone. **Do not tell the user to clone
    `assemble.sh` pin the published bytes — a mismatch means a bad transfer, so
    delete the part and re-run `./assemble.sh`, which re-fetches it.
 
+5. **The Hugging Face model card's Quickstart is a Python snippet, and it is why
+   you keep writing Python.** The card's entire Quickstart is:
+
+   ```python
+   model, processor, config = load_vl_model("bonsai2-27b-mlx")
+   prompt = apply_chat_template(processor, chat_config(config), "…", num_images=1)
+   print(generate(model, processor, prompt, ["photo.jpg"], max_tokens=256, temperature=1.0))
+   ```
+
+   That is one-shot Python, not a server, and it is already implemented **twice**
+   in this repo: as a one-line command (`scripts/mlx_generate_bonsai2.py`) and
+   behind HTTP (`scripts/mlx_server_bonsai2.py`). **Do not write a third.** Use
+   one of those. The card offers no server for MLX; upstream's card routes
+   serving to GGUF ("for CUDA, CPU, and llama.cpp on Metal, use the GGUF packs").
+
+   `scripts/mlx_server_bonsai2.py` is **new and has never been run** (written
+   without Apple Silicon available). Before trusting it, run the curl in SETUP.md
+   Step 4-alt. Coherent answer = it works. Fluent nonsense = it is skipping the
+   rotation, so stop and say so.
+
 Also: do not commit a `.gitattributes` from Hugging Face — it marks
 `*.safetensors` for Git LFS, and this repo deliberately avoids LFS.
 
@@ -73,14 +103,17 @@ Also: do not commit a `.gitattributes` from Hugging Face — it marks
 
 | Task | Command |
 | --- | --- |
-| Install | `cd upstream-demo && ./setup.sh` |
-| Get the model | `cd upstream-demo && sh scripts/download_models.sh` |
-| Get it **without** Hugging Face | `BONSAI_GGUF=… BONSAI_MMPROJ=… ./scripts/start_llama_server.sh` — SETUP.md Step 3-alt |
-| Skip the redundant 8.6 GB MLX copy | `BONSAI_SKIP_MLX=1 sh scripts/download_models.sh` |
-| Serve (OpenAI-compatible, 8080) | `cd upstream-demo && ./scripts/start_llama_server.sh` |
-| One-off prompt | `cd upstream-demo && ./scripts/run_llama.sh -p "..."` |
-| One-off via MLX | `cd upstream-demo && ./scripts/run_mlx.sh -p "..."` |
+| **MLX, one prompt** | `cd upstream-demo && .venv-vlm/bin/python scripts/mlx_generate_bonsai2.py --model .. -p "..."` |
+| **MLX server** (new, untested) | `cd upstream-demo && .venv-vlm/bin/python scripts/mlx_server_bonsai2.py --model .. --port 8080` |
+| Install, **MLX only** — no `setup.sh` | SETUP.md **Step 2-alt** (two commands) |
+| Install, for the llama.cpp server | `cd upstream-demo && ./setup.sh` |
+| Get the MLX weights | `./assemble.sh` in the repo root |
 | Get / verify the MLX weights | `./assemble.sh` / `./assemble.sh --verify` |
+| Get the GGUF (needs Hugging Face) | `cd upstream-demo && sh scripts/download_models.sh` |
+| Get the GGUF **without** Hugging Face | `BONSAI_GGUF=… BONSAI_MMPROJ=… ./scripts/start_llama_server.sh` — Step 3-alt |
+| Skip the redundant 8.6 GB MLX copy | `BONSAI_SKIP_MLX=1 sh scripts/download_models.sh` |
+| Serve, llama.cpp (tested, 8080) | `cd upstream-demo && ./scripts/start_llama_server.sh` |
+| One-off prompt via llama.cpp | `cd upstream-demo && ./scripts/run_llama.sh -p "..."` |
 
 Environment variables: `PORT` (not `BONSAI_PORT`), `BONSAI_HOST`, `BONSAI_CTX`,
 `BONSAI_KV4`, `BONSAI_MMPROJ_CPU`, `BONSAI_NGL`. Full list in
