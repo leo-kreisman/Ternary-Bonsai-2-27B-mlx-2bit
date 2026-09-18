@@ -2,9 +2,9 @@
 #
 # Reassemble Ternary-Bonsai-2-27B-mlx-2bit weights from GitHub Release parts.
 #
-# The two safetensors shards are ~5 GB each, which exceeds GitHub's 2 GiB
-# per-file cap for both Git LFS and Release assets, so each is shipped as
-# three <2 GiB byte-range parts and concatenated back here.
+# The single weight file is ~8.6 GB, which exceeds GitHub's 2 GiB per-file
+# cap for both Git LFS and Release assets, so it is shipped as five <2 GiB
+# byte-range parts and concatenated back here.
 #
 # Usage:
 #   ./assemble.sh              # download + reassemble into this directory
