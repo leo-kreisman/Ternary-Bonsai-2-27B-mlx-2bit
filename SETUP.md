@@ -92,9 +92,45 @@ Downloads into `models/bonsai2-gguf/27B/`:
 > serve files anonymously (verified: an anonymous `HEAD` on the GGUF resolves
 > `200`). Expect ~7.8 GB total.
 >
-> If you want no Hugging Face contact at all, the GGUF has to be mirrored to
-> GitHub Releases the same way the MLX pack was. Until that exists, HF is the
-> only path to a servable model.
+> **Want zero Hugging Face contact?** You do not have to download from it. If
+> the GGUF files are already on disk, **Step 3-alt** below runs the server
+> straight from them. Mirroring the GGUF into this repo's own releases would
+> make that fully GitHub-only; it is not mirrored yet.
+
+## Step 3-alt — Run with no Hugging Face contact at all
+
+If the GGUF files are already on disk — from another machine, a colleague, a
+backup, anywhere — **skip Step 3 entirely** and point the server at them:
+
+```bash
+BONSAI_GGUF=/path/to/Ternary-Bonsai-2-27B-PQ2_0.gguf \
+BONSAI_MMPROJ=/path/to/Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf \
+./scripts/start_llama_server.sh
+```
+
+**This is a supported path, not a workaround.** `start_llama_server.sh:9` and
+`:12` both short-circuit on `BONSAI_GGUF`:
+
+```sh
+[ -n "${BONSAI_GGUF:-}" ] || assert_valid_model
+[ -n "${BONSAI_GGUF:-}" ] || assert_gguf_downloaded start_mlx_server.sh
+```
+
+So the family/size lookup and the "did you download it yet" assertion are both
+skipped, `download_models.sh` is never run, and **no token, no HF, no network
+call happens.** `BONSAI_MMPROJ` is optional — omit it for a text-only server.
+This is upstream's own idiom: `scripts/fetch_gguf.sh:111` prints exactly this
+command after it finishes downloading anything.
+
+To skip only *half* of the Step 3 download instead:
+
+| Command | Effect |
+| --- | --- |
+| `BONSAI_SKIP_GGUF=1 sh scripts/download_models.sh` | MLX weights only (saves ~7.8 GB) |
+| `BONSAI_SKIP_MLX=1 sh scripts/download_models.sh` | GGUF only (what you want here) |
+
+So even the ordinary path can be narrowed: `BONSAI_SKIP_MLX=1` stops it fetching
+a second 8.6 GB MLX copy, since this repo already gives you that one.
 
 ## Step 4 — Serve it
 
@@ -209,6 +245,9 @@ says nothing about the file. Verify integrity properly instead:
 pack**; the GGUF bands are not here and never were. `download_models.sh:96`
 pulls `prism-ml/Ternary-Bonsai-2-27B-gguf`, and there is nowhere else to get
 them. Contacting Hugging Face at Step 3 is the design, not a leak.
+
+You can avoid the *call*, though — not the source. If the GGUF is already on
+disk, **Step 3-alt** runs the server from it with no network access at all.
 
 Related, and hit on this exact machine: **skipping the token prompt does not
 skip the download.** The prompt (`setup.sh:133`) is about *authentication*, not
@@ -403,6 +442,8 @@ vs 81.25; tool calling 74.92 vs 76.74; knowledge/reasoning 79.86 vs 85.55; visio
 | Prompted for a Hugging Face token | Upstream prompt; both repos are public | **Press Enter.** No token needed — see Step 2 |
 | Downloading from Hugging Face | Expected — the GGUF exists only on HF | Let it run; ~7.8 GB, anonymous |
 | `setup.sh` dies creating the venv | `uv` fetching a managed CPython 3.11 | `UV_PYTHON=python3 ./setup.sh` |
+| Want **no** Hugging Face contact | Supported: point at a local GGUF | `BONSAI_GGUF=… BONSAI_MMPROJ=… ./scripts/start_llama_server.sh` — Step 3-alt |
+| It refetches a second 8.6 GB MLX copy | Step 3 fetches both halves | `BONSAI_SKIP_MLX=1 sh scripts/download_models.sh` |
 
 ---
 

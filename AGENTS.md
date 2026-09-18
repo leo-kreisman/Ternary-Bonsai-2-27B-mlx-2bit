@@ -70,6 +70,8 @@ Also: do not commit a `.gitattributes` from Hugging Face — it marks
 | --- | --- |
 | Install | `cd upstream-demo && ./setup.sh` |
 | Get the model | `cd upstream-demo && sh scripts/download_models.sh` |
+| Get it **without** Hugging Face | `BONSAI_GGUF=… BONSAI_MMPROJ=… ./scripts/start_llama_server.sh` — SETUP.md Step 3-alt |
+| Skip the redundant 8.6 GB MLX copy | `BONSAI_SKIP_MLX=1 sh scripts/download_models.sh` |
 | Serve (OpenAI-compatible, 8080) | `cd upstream-demo && ./scripts/start_llama_server.sh` |
 | One-off prompt | `cd upstream-demo && ./scripts/run_llama.sh -p "..."` |
 | One-off via MLX | `cd upstream-demo && ./scripts/run_mlx.sh -p "..."` |
