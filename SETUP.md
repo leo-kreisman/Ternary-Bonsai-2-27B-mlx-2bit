@@ -35,8 +35,38 @@ binaries (`prism-b10683-d8f26ee`, macOS arm64) into `bin/mac/`, then clears the
 Gatekeeper quarantine flag and ad-hoc codesigns them. Skipping that last step is
 why unsigned binaries get killed on first run.
 
+> **It will ask for a Hugging Face token. Press Enter to skip it.** The prompt
+> says so itself ("press Enter to skip"), and `setup.sh:133` guards it with
+> `if [ -z "$BONSAI_TOKEN" ] && [ -r /dev/tty ]` — it is offered, never required.
+> Step 3 asks the same thing. **You do not need a token, and you should not paste
+> one.** Both repos this pulls from report `private: false, gated: false` and
+> serve files anonymously. Upstream added the prompt because the 27B repos were
+> private at one point; they are public now.
+>
+> If you *do* paste one, `setup.sh:143` writes it to `upstream-demo/.bonsai_token`
+> (chmod 600, gitignored) and reuses it forever after. Pressing Enter leaves no
+> file at all.
+
 Takes a few minutes. It needs Xcode Command Line Tools (`xcode-select --install`
 if you don't have them).
+
+> **If it dies creating the venv, `uv` is trying to download a whole Python.**
+> `setup.sh:250` runs `uv venv "$VENV_DIR" --python 3.11`. When no 3.11 exists
+> locally, `uv` fetches a managed CPython build — and that fetch fails behind a
+> proxy or firewall, killing setup for a reason that has nothing to do with the
+> model. Tell `uv` to use the interpreter you already have:
+>
+> ```bash
+> UV_PYTHON=python3 ./setup.sh
+> ```
+>
+> That is a supported fix, not a hack: it says "do not fetch a Python." It was
+> needed on the M3 Pro. If a 3.13 system Python later breaks a pinned wheel, use
+> `brew install python@3.11 && UV_PYTHON=3.11 ./setup.sh` instead.
+>
+> Do **not** read this failure as "the model is broken" or "setup is
+> unsupported" — it is a Python-provisioning detail, one line above the model
+> code.
 
 ## Step 3 — Get the model
 
@@ -50,6 +80,21 @@ Downloads into `models/bonsai2-gguf/27B/`:
 | --- | ---: | --- |
 | `*-PQ2_0.gguf` | ~7.2 GB | the model |
 | `*mmproj-Q8_0.gguf` | ~0.63 GB | vision (images) |
+
+> **This downloads from Hugging Face, and that is expected — it is the only
+> source.** The GGUF bands are not in this GitHub repo. This repo mirrors the
+> **MLX pack** (`model.safetensors`); the GGUF never was and is not here.
+> `download_models.sh:96` pulls `prism-ml/Ternary-Bonsai-2-27B-gguf`.
+>
+> Step 3 offers the same optional token prompt as Step 2. **Press Enter.**
+> Skipping the token does **not** skip the download — it makes it *anonymous*,
+> which is what you want. Both repos report `private: false, gated: false` and
+> serve files anonymously (verified: an anonymous `HEAD` on the GGUF resolves
+> `200`). Expect ~7.8 GB total.
+>
+> If you want no Hugging Face contact at all, the GGUF has to be mirrored to
+> GitHub Releases the same way the MLX pack was. Until that exists, HF is the
+> only path to a servable model.
 
 ## Step 4 — Serve it
 
@@ -85,7 +130,7 @@ reference material.
 
 # 2. THE REFUTATION
 
-Seven wrong conclusions this model reliably produces. If you or an agent reached
+Eight wrong conclusions this model reliably produces. If you or an agent reached
 one of these, you were not being stupid — the documentation actively misleads on
 several of them — but none of them is true, and none is worth another minute.
 
@@ -157,6 +202,23 @@ says nothing about the file. Verify integrity properly instead:
 ```bash
 ./assemble.sh --verify
 ```
+
+### ❌ "It's downloading from Hugging Face — that shouldn't be happening"
+
+**It should, and it is the only source.** This GitHub repo mirrors the **MLX
+pack**; the GGUF bands are not here and never were. `download_models.sh:96`
+pulls `prism-ml/Ternary-Bonsai-2-27B-gguf`, and there is nowhere else to get
+them. Contacting Hugging Face at Step 3 is the design, not a leak.
+
+Related, and hit on this exact machine: **skipping the token prompt does not
+skip the download.** The prompt (`setup.sh:133`) is about *authentication*, not
+permission. Declining it makes the download run anonymously, which succeeds —
+both repos are `private: false, gated: false`.
+
+One more thing that is not the model's fault: if `setup.sh` dies **creating the
+venv**, `uv` was fetching a managed CPython (`setup.sh:250`). That is a Python
+provisioning failure one line above any model code. Run
+`UV_PYTHON=python3 ./setup.sh` — see Step 2.
 
 ### ❌ "Vision isn't included in the MLX pack"
 
@@ -338,6 +400,9 @@ vs 81.25; tool calling 74.92 vs 76.74; knowledge/reasoning 79.86 vs 85.55; visio
 | Driver refuses to import the runtime | A `runtime/*.py` was edited | Restore the pinned file (§3) |
 | `xcrun metal` not found | No Xcode CLT | `xcode-select --install` |
 | Port 8080 in use | Another server running | `PORT=8081 ./scripts/start_llama_server.sh` |
+| Prompted for a Hugging Face token | Upstream prompt; both repos are public | **Press Enter.** No token needed — see Step 2 |
+| Downloading from Hugging Face | Expected — the GGUF exists only on HF | Let it run; ~7.8 GB, anonymous |
+| `setup.sh` dies creating the venv | `uv` fetching a managed CPython 3.11 | `UV_PYTHON=python3 ./setup.sh` |
 
 ---
 
