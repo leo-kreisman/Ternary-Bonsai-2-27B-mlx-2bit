@@ -12,9 +12,16 @@ setup scripts, and the upstream documentation without a second network fetch.
 | License | Apache 2.0 (see [`LICENSE`](LICENSE)) |
 | Vendored | 2026-09-18 |
 
-Nothing in here has been modified. The only omission is upstream's `.git`
+Nothing from upstream has been modified. The only omission is upstream's `.git`
 directory. The vendored PDFs are upstream's whitepapers, carried for
 completeness.
+
+**One file was added** (not upstream's):
+
+- `scripts/mlx_server_bonsai2.py` — an OpenAI-compatible MLX server for Bonsai 2
+  packs, which upstream does not ship. It sits here so it can resolve
+  `bonsai2-runtime.sha256` beside it. It is **new and untested**; see SETUP.md
+  Step 4-alt. Every other file in this directory is upstream's, byte for byte.
 
 **This is a snapshot, not a fork.** Upstream keeps moving; if something here
 disagrees with the live repository, upstream is right. To refresh it:

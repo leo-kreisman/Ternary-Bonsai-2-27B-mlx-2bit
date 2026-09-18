@@ -196,6 +196,48 @@ a second 8.6 GB MLX copy, since this repo already gives you that one.
   --top-k 20 --jinja --mmproj ... --image-max-tokens 1024`
 - `-c 16384` is chosen automatically for an 18 GB machine
 
+## Step 4-alt — Serve with MLX (no GGUF, no llama.cpp)
+
+This repo ships an MLX server: **`scripts/mlx_server_bonsai2.py`**. It is
+OpenAI-compatible and runs the pack on MLX through the pack's own rotated-weight
+loader.
+
+```bash
+.venv-vlm/bin/python scripts/mlx_server_bonsai2.py --model .. --port 8080
+```
+
+```bash
+curl http://127.0.0.1:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","content":"What is the capital of France?"}]}'
+```
+
+Point a coding agent at **`http://127.0.0.1:8080/v1`**. Text only — for images
+use `run_mlx.sh --image`. Endpoints: `/v1/chat/completions`, `/v1/models`,
+`/health`.
+
+> **Read this before you trust it: the file has never been run.** It was written
+> without an Apple Silicon machine available, so it is unverified. **The first
+> command you run must be that `curl`.**
+>
+> - Coherent answer → the server works. Wire your agent to it.
+> - **Fluent nonsense → stop.** That is the rotation being skipped, and it means
+>   this server is not applying the loader correctly. Do not use it, and say so;
+>   it is a bug in a new file, not a property of the model.
+
+**Why this file exists.** `mlx_vlm.server` and `mlx_lm.server` cannot serve this
+pack: they load the rotated weights and return wrong output with no error, which
+is why upstream's `start_mlx_server.sh` refuses `bonsai2`. This server calls
+`vision_artifact.load_vl_model` and the same `mlx_vlm.generate` as
+`scripts/mlx_generate_bonsai2.py`, so the transform is applied. It uses only the
+standard library for HTTP, because `runtime/requirements.txt` pins exact versions
+and carries no web framework.
+
+Two known limits, both deliberate: generation is **not** token-by-token streamed
+(a `stream: true` request replays the finished text as one SSE delta), and
+requests serialise on a lock, because MLX generation is not safe to run
+concurrently on one model instance.
+
 ## Step 5 — Use it
 
 ```bash
@@ -442,13 +484,17 @@ survives being copied around.
 | --- | --- | --- |
 | File | `model.safetensors` (8.6 GB) | `*.gguf` (5.9–7.2 GB) |
 | Runtime | MLX / `mlx-vlm`, `.venv-vlm` | llama.cpp, `bin/mac/llama-server` |
-| Served? | **No** — one-shot only | **Yes** — port 8080 |
+| Served? | **Yes** — Step 4-alt (new file, untested) | **Yes** — tested, port 8080 |
 | Driver | `scripts/run_mlx.sh` | `scripts/run_llama.sh` |
 | Fork needed | **No** — stock MLX + `mlx-vlm` | **Yes** — `PrismML-Eng/llama.cpp` |
 
-The MLX pack is **one-shot only**. If you want a server, it is the GGUF path,
-full stop. **"One-shot only" means no server — it does not mean MLX is
-unsupported.** It is an MLX model and `run_mlx.sh` runs it on stock MLX.
+Upstream ships **no** MLX server for `bonsai2` — its `start_mlx_server.sh`
+refuses one. **This repo adds one** (`scripts/mlx_server_bonsai2.py`, Step 4-alt,
+untested); the GGUF path stays the tested server route.
+
+**"No upstream server" was never "not an MLX model."** It is an MLX model and
+`run_mlx.sh` runs it on stock MLX — that was always true, and it is why an MLX
+server could be written at all.
 
 ## The MLX route, if you specifically want it
 
