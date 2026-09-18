@@ -16,12 +16,26 @@ The script downloads the parts, verifies each one's sha256, concatenates them, a
 
 The weights are stored in a **blockwise Hadamard-rotated basis**. The runtime must apply the matching transform to activations. Stock `mlx-lm` will not run it — upstream is explicit that a runtime either applies the transform or refuses to load the file.
 
-Use either:
+Use the **vision loader**, not `artifact.load_model` — that one is the older
+text-only loader and it rejects this pack outright:
 
-- the **bundled runtime** in [`runtime/`](https://github.com/leo-kreisman/Ternary-Bonsai-2-27B-mlx-2bit/tree/main/runtime) — `sys.path.insert(0, '.../runtime')` then `from artifact import load_model` — install `runtime/requirements.txt`, which pins exact versions; or
-- the MLX fork with low-bit kernels: <https://github.com/PrismML-Eng/mlx>
+```python
+import sys
+sys.path.insert(0, '<repo>/runtime')
+from vision_artifact import load_vl_model
+model, processor, config = load_vl_model('<repo>')
+```
 
-The bundled runtime is a **text-only preview**: vision and MTP are not wired up, though the vision tower weights are present in the file. The upstream source of truth for running this model is [PrismML-Eng/Bonsai-demo](https://github.com/PrismML-Eng/Bonsai-demo).
+`PACK-RUNTIME.md` tells you to use `artifact.load_model`; **it is stale and will
+fail** with `Unsupported packed model schema`, because this pack is
+`schema_version: 2` and `artifact.py` requires `1`. Vision **is** included in this
+pack (`components = {"text": true, "vision": true, "mtp": false}`); MTP is not.
+
+For an OpenAI-compatible server, use the **llama.cpp path** — `mlx_lm.server`
+cannot serve this model, and upstream's own MLX server script refuses it by
+design. Full walkthrough, including an 18 GB tuning section:
+[`SETUP.md`](https://github.com/leo-kreisman/Ternary-Bonsai-2-27B-mlx-2bit/blob/main/SETUP.md).
+Agents should start at [`AGENTS.md`](https://github.com/leo-kreisman/Ternary-Bonsai-2-27B-mlx-2bit/blob/main/AGENTS.md).
 
 ## Parts
 

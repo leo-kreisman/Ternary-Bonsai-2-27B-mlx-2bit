@@ -22,6 +22,11 @@ ternary MLX weights for [prism-ml/Ternary-Bonsai-2-27B-mlx-2bit](https://hugging
 > methodology and benchmark detail. This repository only redistributes the
 > weights from GitHub Releases.
 
+**Want to actually run it? Go to [`SETUP.md`](SETUP.md).** Short version: the
+supported path on macOS is **llama.cpp with the PrismML fork**, and
+**`mlx_lm.server` cannot serve this model** — that is upstream's design, not a
+broken setup.
+
 ## Read this before you try to load it
 
 **This is not a drop-in MLX model.** Two things will bite you:
@@ -38,11 +43,19 @@ refuses to load the file."* You need one of:
 
 The ordinary `mlx_lm.load("...")` snippet will not work.
 
-**2. The bundled runtime is a text-only preview.** Per
-[`PACK-RUNTIME.md`](PACK-RUNTIME.md), the vision tower and MTP are not wired up
-in it, and the chat template is copied from the source GGUF. The vision tower
-*weights* are present in `model.safetensors` (0.92 GB of the 8.60 GB), but the
-preview runtime does not use them.
+**2. Use `vision_artifact.load_vl_model`, NOT `artifact.load_model`.**
+[`PACK-RUNTIME.md`](PACK-RUNTIME.md) tells you to call `artifact.load_model`.
+**That will fail on this pack.** `artifact.py` is the older text-only loader and
+it rejects any config that is not `schema_version 1`; this pack is
+`schema_version 2`, so it raises `Unsupported packed model schema` before
+touching a single tensor. The loader that matches this pack is
+`vision_artifact.load_vl_model`, which has no schema-version check and reads the
+schema-2 fields (`hadamard_config`, `tensor_namespace`, `gdn_activation_layout`,
+`components`).
+
+The pack's `components` are `{"text": true, "vision": true, "mtp": false}` — so
+**vision is included** and MTP is not. `PACK-RUNTIME.md`'s "Vision and MTP are
+not included" describes the text-only path, not this pack.
 
 > **The upstream source of truth for running this model is
 > [PrismML-Eng/Bonsai-demo](https://github.com/PrismML-Eng/Bonsai-demo).** It
@@ -54,10 +67,18 @@ preview runtime does not use them.
 ```python
 import sys
 sys.path.insert(0, '/path/to/Ternary-Bonsai-2-27B-mlx-2bit/runtime')
-from artifact import load_model
+from vision_artifact import load_vl_model
 
-model, config = load_model('/path/to/Ternary-Bonsai-2-27B-mlx-2bit')
+model, processor, config = load_vl_model('/path/to/Ternary-Bonsai-2-27B-mlx-2bit')
 ```
+
+Note the three return values: `processor` is a built `Qwen3VLProcessor`, so the
+vision path works without `AutoProcessor` and without torch.
+
+**`mlx_lm.server` will not serve this model, and neither will `mlx_lm.load`.**
+This is not a limitation of your setup — upstream's `scripts/start_mlx_server.sh`
+explicitly refuses `bonsai2`, and the supported server path is llama.cpp. See
+[`SETUP.md`](SETUP.md) for how to actually get a server running.
 
 Install `runtime/requirements.txt` on Apple Silicon first. It pins exact
 versions, and they matter:
@@ -201,12 +222,14 @@ Recommended sampling parameters (upstream, and carried in
 
 | Path | What it is |
 | --- | --- |
+| **`SETUP.md`** | **start here** — install, serve, run, benchmarks, and 18 GB tuning for macOS |
+| **`AGENTS.md`** | hard rules for AI agents (what not to try, and why) |
 | `model.safetensors` | the weights — **not in git**, fetched by `assemble.sh` |
-| `runtime/` | the bundled MLX runtime (`artifact.py`, `codec.py`, `runtime.py`, `vision_artifact.py`) |
+| `runtime/` | the bundled MLX runtime; **`vision_artifact.py` is the loader this pack needs**, `artifact.py` is the older text-only one |
 | `hadamard.json` | the rotation metadata the runtime applies to activations |
 | `config.json` | per-layer ternary group metadata (58 KB) |
 | `chat_template.jinja`, `tokenizer*` | tokenizer and chat template |
-| `PACK-RUNTIME.md` | upstream notes on loading, verbatim |
+| `PACK-RUNTIME.md` | upstream loading notes, verbatim — **stale for this pack**, see §2 above |
 | `UPSTREAM_MODEL_CARD.md` | upstream model card, verbatim |
 | `files.json`, `*-validation.json` | upstream serialization/tokenizer validation records |
 
