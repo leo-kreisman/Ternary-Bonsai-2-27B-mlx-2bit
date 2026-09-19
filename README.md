@@ -13,11 +13,26 @@ license: apache-2.0
 
 # Ternary-Bonsai-2-27B-mlx-2bit
 
-ternary MLX weights for [prism-ml/Ternary-Bonsai-2-27B-mlx-2bit](https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-mlx-2bit), served from GitHub Releases.
+Ternary weights for Bonsai 2 27B, shipped **two ways** from GitHub Releases so
+neither path needs Hugging Face access.
 
-> **This is a mirror.** The canonical copy lives at
-> [`prism-ml/Ternary-Bonsai-2-27B-mlx-2bit`](https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-mlx-2bit)
-> on Hugging Face. The upstream model card is preserved verbatim in this repo as
+| Artifact | Upstream | Runtime | Get it |
+| --- | --- | --- | --- |
+| MLX pack, 8.60 GB | [`prism-ml/Ternary-Bonsai-2-27B-mlx-2bit`](https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-mlx-2bit) | MLX / `mlx-vlm` | `./assemble.sh` |
+| GGUF, `PTQ1_0` 5.54 GiB + `Q8_0` mmproj | [`prism-ml/Ternary-Bonsai-2-27B-gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf) | llama.cpp | `./assemble-gguf.sh` |
+
+Both are the same model in different containers. **The GGUF path is the shorter
+one** — no Python virtualenv, no compiler, no Hugging Face, just an 11 MB
+prebuilt binary plus the weights:
+
+```bash
+git clone https://github.com/leo-kreisman/Ternary-Bonsai-2-27B-mlx-2bit.git
+cd Ternary-Bonsai-2-27B-mlx-2bit
+./serve-gguf.sh          # fetch, verify, smoke-test, serve on :8080
+```
+
+> **This is a mirror.** The canonical copies live upstream on Hugging Face (links
+> above). The upstream model card is preserved verbatim in this repo as
 > [`UPSTREAM_MODEL_CARD.md`](UPSTREAM_MODEL_CARD.md) — read it for the full
 > methodology and benchmark detail. This repository only redistributes the
 > weights from GitHub Releases.
@@ -169,6 +184,51 @@ A good download prints `OK` for all five lines.
 > a loud, catchable failure into a model that loads and silently produces wrong
 > output.
 
+## Getting the GGUF instead
+
+The MLX pack above is one artifact. The GGUF is a **different container** for the
+same model, run by a **different runtime** — llama.cpp, not MLX. Neither feeds
+the other. If you want a server, this is the shorter path.
+
+Release tag `gguf-v1` carries two files:
+
+| Asset | Bytes | Role |
+| --- | ---: | --- |
+| `Ternary-Bonsai-2-27B-PTQ1_0.gguf.part-0/1/2` | 1,982,216,310 ×3 | the model — 5,946,648,928 bytes, split 3 ways to stay under the 2 GiB cap |
+| `Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf` | 629,246,976 | the vision projector, under the cap, shipped whole |
+
+```bash
+./serve-gguf.sh            # fetch, verify, smoke-test, serve on :8080
+./serve-gguf.sh --check    # the same, but stop before serving
+./assemble-gguf.sh         # just the weights, resumable
+./assemble-gguf.sh --verify
+```
+
+They land in `upstream-demo/models/bonsai2-gguf/27B/`, which is the directory the
+demo's own scripts already look in, so no environment variables are involved.
+
+> ### ⚠️ You need the Prism fork of llama.cpp — not stock llama.cpp
+>
+> `PTQ1_0` uses ggml type ids past upstream's `GGML_TYPE_COUNT`, so **mainline
+> llama.cpp refuses it outright**. That is the safe failure. Do **not** reach for
+> the `Q2_0` band instead: mainline knows that type id *and* the `qwen35`
+> architecture, so it loads the file with no complaint and emits gibberish.
+> `serve-gguf.sh` and `download_binaries.sh` both fetch the pinned Prism build.
+
+Whole-file hashes, identical to Hugging Face:
+
+```
+53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3  Ternary-Bonsai-2-27B-PTQ1_0.gguf
+6807ede61d570bb86ba34b756a0fa109edc33668604de867c6ea6d8f1d631903  Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf
+```
+
+The same warning as above applies: a part that fails its checksum is a bad
+download, not a wrong hash. Do not edit the expected hashes to match it.
+
+`PTQ1_0` (1.75 bpw, 5.54 GiB) is the **smaller** of the two servable GGUF bands.
+`PQ2_0` (~7.2 GB) is higher quality and is **not** mirrored here — if you have the
+memory for it, fetch it from Hugging Face. `F16` (53.8 GB) is not mirrored either.
+
 ## Model Details
 
 - **Base model:** [Qwen/Qwen3.8-27B](https://huggingface.co/Qwen/Qwen3.8-27B), architecture unchanged
@@ -233,7 +293,10 @@ Recommended sampling parameters (upstream, and carried in
 | --- | --- |
 | **`SETUP.md`** | **start here** — install, serve, run, benchmarks, and 18 GB tuning for macOS |
 | **`AGENTS.md`** | hard rules for AI agents (what not to try, and why) |
-| `model.safetensors` | the weights — **not in git**, fetched by `assemble.sh` |
+| **`serve-gguf.sh`** | **one command:** fetch the GGUF, install llama.cpp, smoke-test, serve |
+| **`serve-mlx.sh`** | the same for the MLX pack — fetch the weights, build the venv, serve |
+| `assemble-gguf.sh` | fetch + verify the GGUF release parts into `upstream-demo/models/bonsai2-gguf/27B/` |
+| `model.safetensors` | the MLX weights — **not in git**, fetched by `assemble.sh` |
 | `runtime/` | the bundled MLX runtime; **`vision_artifact.py` is the loader this pack needs**, `artifact.py` is the older text-only one |
 | `hadamard.json` | the rotation metadata the runtime applies to activations |
 | `config.json` | per-layer ternary group metadata (58 KB) |

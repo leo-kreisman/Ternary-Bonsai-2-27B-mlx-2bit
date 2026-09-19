@@ -12,6 +12,19 @@ Target machine: Apple Silicon, 18 GB (M3 Pro). Works on any Apple Silicon Mac.
 
 One path. Copy-paste in order. Nothing here needs a decision from you.
 
+**If all you want is a served model, both endpoints now collapse to one
+command.** Run one of these from the repo root and skip to §5:
+
+| You want | Command | Hugging Face | Python venv |
+| --- | --- | --- | --- |
+| A server, no HF contact at all | `./serve-gguf.sh` | **not touched** | not needed |
+| A server from the MLX pack | `./serve-mlx.sh` | not touched | 3.11, built for you |
+
+`./serve-gguf.sh` is the shorter of the two — the GGUF bands are mirrored in
+this repo's own release now, and the llama.cpp install is a 12 MB prebuilt
+tarball. Steps 2 through 4 below are the longhand versions of the same thing,
+and Step 3-alt covers the GGUF mirror in detail.
+
 ## Step 1 — Get the repo
 
 ```bash
@@ -156,29 +169,72 @@ Downloads into `models/bonsai2-gguf/27B/`:
 
 | File | Size | Why |
 | --- | ---: | --- |
-| `*-PQ2_0.gguf` | ~7.2 GB | the model |
+| `*-PQ2_0.gguf` | ~7.2 GB | the model — the band this step fetches |
+| `*-PTQ1_0.gguf` | ~5.9 GB | the model, smaller; the band the mirror ships |
 | `*mmproj-Q8_0.gguf` | ~0.63 GB | vision (images) |
 
-> **This downloads from Hugging Face, and that is expected — it is the only
-> source.** The GGUF bands are not in this GitHub repo. This repo mirrors the
-> **MLX pack** (`model.safetensors`); the GGUF never was and is not here.
-> `download_models.sh:96` pulls `prism-ml/Ternary-Bonsai-2-27B-gguf`.
+> **You do not have to run this step.** `download_models.sh:96` pulls
+> `prism-ml/Ternary-Bonsai-2-27B-gguf` from Hugging Face. The same bytes are
+> mirrored in this repo's own GitHub release, which needs no token and no
+> Hugging Face account at all — see **Step 3-alt**, which is now the shorter
+> path. This step stays correct if you would rather take the upstream source,
+> or if you want `PQ2_0` rather than the mirrored `PTQ1_0`.
 >
-> Step 3 offers the same optional token prompt as Step 2. **Press Enter.**
-> Skipping the token does **not** skip the download — it makes it *anonymous*,
-> which is what you want. Both repos report `private: false, gated: false` and
-> serve files anonymously (verified: an anonymous `HEAD` on the GGUF resolves
-> `200`). Expect ~7.8 GB total.
->
-> **Want zero Hugging Face contact?** You do not have to download from it. If
-> the GGUF files are already on disk, **Step 3-alt** below runs the server
-> straight from them. Mirroring the GGUF into this repo's own releases would
-> make that fully GitHub-only; it is not mirrored yet.
+> If you do run it: it offers the same optional token prompt as Step 2. **Press
+> Enter.** Skipping the token does **not** skip the download — it makes it
+> *anonymous*, which is what you want. Both repos report `private: false,
+> gated: false` and serve files anonymously (verified: an anonymous `HEAD` on
+> the GGUF resolves `200`). Expect ~7.8 GB for `PQ2_0` + `mmproj`.
 
 ## Step 3-alt — Run with no Hugging Face contact at all
 
-If the GGUF files are already on disk — from another machine, a colleague, a
-backup, anywhere — **skip Step 3 entirely** and point the server at them:
+**One command, from the repo root. This is the whole step:**
+
+```bash
+./serve-gguf.sh              # fetch, verify, smoke-test, serve on :8080
+./serve-gguf.sh --check      # the same, but stop before serving
+./serve-gguf.sh --port 7777  # serve elsewhere
+./serve-gguf.sh --no-vision  # text only
+```
+
+`serve-gguf.sh` fetches the two GGUF files from this repo's own release
+(`gguf-v1`), verifies every part against a pinned sha256, places them in
+`models/bonsai2-gguf/27B/`, fetches the prebuilt Prism llama.cpp binary, runs a
+known-answer prompt, and only then starts the server. **Nothing in that
+sequence touches Hugging Face**, and there is no `setup.sh`, no Python
+virtualenv and no compiler: the llama.cpp install is a 12 MB prebuilt tarball
+from GitHub.
+
+Just the weights, without serving:
+
+```bash
+./assemble-gguf.sh            # fetch + verify + place (resumable)
+./assemble-gguf.sh --verify   # verify what is on disk; fetch nothing
+```
+
+### What is mirrored, and where it lands
+
+| File | Bytes | Ships as |
+| --- | ---: | --- |
+| `Ternary-Bonsai-2-27B-PTQ1_0.gguf` | 5,946,648,928 | 3 parts (`part-0`…`part-2`), concatenated |
+| `Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf` | 629,246,976 | whole — one asset |
+
+Both land in `upstream-demo/models/bonsai2-gguf/27B/`, the exact directory
+`download_models.sh` would have used. That is deliberate: `start_llama_server.sh`
+then finds the model through `select_model_gguf`, which already knows the
+`*-PTQ1_0.gguf` pattern (`scripts/common.sh:136`), and finds the projector
+through its own `*mmproj*.gguf` glob (`:72`). **No environment variables are
+needed, and no new code path is introduced.**
+
+`F16` (53.8 GB) and `PQ2_0` (7.2 GB) are **not** mirrored. `PTQ1_0` is the
+smaller of the two servable bands, which is why it is the one that fits a
+machine that cannot hold the 8.6 GB MLX pack. If you want `PQ2_0`'s quality and
+have the memory for it, get it from Hugging Face with Step 3.
+
+### If the GGUF files are already on disk, anywhere
+
+If the files came from somewhere else — another machine, a colleague, a backup —
+point the server straight at them:
 
 ```bash
 BONSAI_GGUF=/path/to/Ternary-Bonsai-2-27B-PQ2_0.gguf \
@@ -399,13 +455,16 @@ says nothing about the file. Verify integrity properly instead:
 
 ### ❌ "It's downloading from Hugging Face — that shouldn't be happening"
 
-**It should, and it is the only source.** This GitHub repo mirrors the **MLX
-pack**; the GGUF bands are not here and never were. `download_models.sh:96`
-pulls `prism-ml/Ternary-Bonsai-2-27B-gguf`, and there is nowhere else to get
-them. Contacting Hugging Face at Step 3 is the design, not a leak.
+**Both artifacts are mirrored here now, so this is a choice, not a necessity.**
+`download_models.sh:96` pulling `prism-ml/Ternary-Bonsai-2-27B-gguf` is the
+*upstream* path, and it is still what `setup.sh` does — that is the design, not
+a leak. But it is no longer the only way to get the GGUF: this repo's `gguf-v1`
+release carries the `PTQ1_0` band and the projector, and `./assemble-gguf.sh`
+fetches them from GitHub with no Hugging Face contact.
 
-You can avoid the *call*, though — not the source. If the GGUF is already on
-disk, **Step 3-alt** runs the server from it with no network access at all.
+So if you are seeing Hugging Face traffic at Step 3, nothing is wrong — you are
+just on the path that downloads from upstream. To avoid the call entirely, use
+**Step 3-alt** (`./serve-gguf.sh`), which fetches from this repo instead.
 
 Related, and hit on this exact machine: **skipping the token prompt does not
 skip the download.** The prompt (`setup.sh:133`) is about *authentication*, not

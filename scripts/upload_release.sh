@@ -135,11 +135,20 @@ for a in json.load(sys.stdin):
 }
 
 echo "==> uploading from ${PARTS_DIR}"
-# Parts first (large), then the manifest.
+# Parts first (large), then whole-file assets, then the manifest.
+#
+# The patterns matter. The MLX release ships only `*.safetensors.part-N`, but
+# the GGUF release ships `*.gguf.part-N` for the model *and* a whole `*.gguf`
+# asset for the vision projector, which has no parts at all. Matching only the
+# safetensors pattern uploads the manifest and silently skips every weight,
+# then prints "done" and a valid-looking release URL. A given file matches at
+# most one pattern here, so nothing is uploaded twice.
 rc=0
-for f in "${PARTS_DIR}"/*.safetensors.part-*; do
-  [ -e "$f" ] || continue
-  upload_asset "$f" || rc=1
+for pat in '*.safetensors.part-*' '*.gguf.part-*' '*.gguf' '*.safetensors'; do
+  for f in "${PARTS_DIR}"/$pat; do
+    [ -e "$f" ] || continue
+    upload_asset "$f" || rc=1
+  done
 done
 if [ -f "${PARTS_DIR}/MANIFEST.sha256" ]; then
   upload_asset "${PARTS_DIR}/MANIFEST.sha256" || rc=1
