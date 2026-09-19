@@ -74,10 +74,13 @@ GGUF_DIR="$DEMO/models/bonsai2-gguf/27B"
 MODEL="$GGUF_DIR/Ternary-Bonsai-2-27B-PTQ1_0.gguf"
 MMPROJ="$GGUF_DIR/Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf"
 
-for f in assemble-gguf.sh runtime/requirements.txt; do
+# Sentinels for "this really is the repo root". They are deliberately files the
+# GGUF path itself uses: checking an MLX-only file (runtime/requirements.txt)
+# would make this script refuse to run on a checkout that had the MLX half
+# stripped, which is not a reason the GGUF path has any business caring about.
+for f in assemble-gguf.sh upstream-demo/scripts/start_llama_server.sh; do
   [ -e "$f" ] || die "$f is missing. Run this from the root of the cloned repository."
 done
-[ -d "$DEMO" ] || die "upstream-demo/ is missing. Run this from the root of the cloned repository."
 
 # ---------------------------------------------------------------- 1. platform
 say "1/5  platform"
