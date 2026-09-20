@@ -16,3 +16,7 @@ __pycache__/
 # Local tooling artifacts (not model content)
 .claude/
 system-commandline-sentinel-files/
+
+# Session handoff notes: required by the global workflow but this is a
+# public mirror, so they stay local.
+/DEVELOPMENT_LOG.md
