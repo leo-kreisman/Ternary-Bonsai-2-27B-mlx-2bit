@@ -19,7 +19,7 @@ neither path needs Hugging Face access.
 | Artifact | Upstream | Runtime | Get it |
 | --- | --- | --- | --- |
 | MLX pack, 8.60 GB | [`prism-ml/Ternary-Bonsai-2-27B-mlx-2bit`](https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-mlx-2bit) | MLX / `mlx-vlm` | `./assemble.sh` |
-| GGUF, `PTQ1_0` 5.54 GiB + `Q8_0` mmproj | [`prism-ml/Ternary-Bonsai-2-27B-gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf) | llama.cpp | `./assemble-gguf.sh` |
+| GGUF, `PTQ1_0` 5.54 GiB + `PQ2_0` 6.71 GiB, both projectors | [`prism-ml/Ternary-Bonsai-2-27B-gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf) | llama.cpp | `./assemble-gguf.sh` |
 
 Both are the same model in different containers. **The GGUF path is the shorter
 one** — no Python virtualenv, no compiler, no Hugging Face, just an 11 MB
@@ -190,12 +190,14 @@ The MLX pack above is one artifact. The GGUF is a **different container** for th
 same model, run by a **different runtime** — llama.cpp, not MLX. Neither feeds
 the other. If you want a server, this is the shorter path.
 
-Release tag `gguf-v1` carries two files:
+Release tag `gguf-v1` carries both servable bands and both vision projectors:
 
 | Asset | Bytes | Role |
 | --- | ---: | --- |
-| `Ternary-Bonsai-2-27B-PTQ1_0.gguf.part-0/1/2` | 1,982,216,310 ×3 | the model — 5,946,648,928 bytes, split 3 ways to stay under the 2 GiB cap |
-| `Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf` | 629,246,976 | the vision projector, under the cap, shipped whole |
+| `Ternary-Bonsai-2-27B-PTQ1_0.gguf.part-0/1/2` | 1,982,216,310 ×3 | the smaller band — 5,946,648,928 bytes, split 3 ways to stay under the 2 GiB cap |
+| `Ternary-Bonsai-2-27B-PQ2_0.gguf.part-0/1/2/3` | 1,801,542,232 ×4 | the higher-quality band — 7,206,168,928 bytes, split 4 ways |
+| `Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf` | 629,246,976 | the tested vision projector, under the cap, shipped whole |
+| `Ternary-Bonsai-2-27B-mmproj-BF16.gguf` | 931,145,856 | the BF16 projector, shipped whole, placed one directory over |
 
 ```bash
 ./serve-gguf.sh            # fetch, verify, smoke-test, serve on :8080
@@ -204,14 +206,21 @@ Release tag `gguf-v1` carries two files:
 ./assemble-gguf.sh --verify
 ```
 
-They land in `upstream-demo/models/bonsai2-gguf/27B/`, which is the directory the
-demo's own scripts already look in, so no environment variables are involved.
+The model and the tested Q8_0 projector land in
+`upstream-demo/models/bonsai2-gguf/27B/`, which is the directory the demo's own
+scripts already look in, so no environment variables are involved.
+`mmproj-BF16` lands in `27B-projectors/` beside it instead — deliberately, not by
+oversight: `start_llama_server.sh:72` picks its projector with a first-match glob,
+and `mmproj-BF16` sorts before `mmproj-Q8_0`, so putting it in the model
+directory would silently switch every run to a projector the smoke test never
+touches. Point `BONSAI_MMPROJ` at it to use it.
 
-> ### ⚠️ You need the Prism fork of llama.cpp — not stock llama.cpp
+> ### ⚠️ You need the Prism fork of llama.cpp — for both bands
 >
-> `PTQ1_0` uses ggml type ids past upstream's `GGML_TYPE_COUNT`, so **mainline
-> llama.cpp refuses it outright**. That is the safe failure. Do **not** reach for
-> the `Q2_0` band instead: mainline knows that type id *and* the `qwen35`
+> `PTQ1_0` and `PQ2_0` both use ggml type ids past upstream's `GGML_TYPE_COUNT`,
+> so **mainline llama.cpp refuses them outright**. That is the safe failure.
+> There is no stock-llama.cpp band in this release. Do **not** reach for the
+> `Q2_0` band instead: mainline knows that type id *and* the `qwen35`
 > architecture, so it loads the file with no complaint and emits gibberish.
 > `serve-gguf.sh` and `download_binaries.sh` both fetch the pinned Prism build.
 
@@ -219,15 +228,27 @@ Whole-file hashes, identical to Hugging Face:
 
 ```
 53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3  Ternary-Bonsai-2-27B-PTQ1_0.gguf
+3907dc1658db1f78a9826bf8d5bcb8dc65db0d466388937af57f2294fae62ec1  Ternary-Bonsai-2-27B-PQ2_0.gguf
 6807ede61d570bb86ba34b756a0fa109edc33668604de867c6ea6d8f1d631903  Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf
+e287342d92332fa3577ed1d42e921dac9370c08da58ba9337fa450f6cc76cfd7  Ternary-Bonsai-2-27B-mmproj-BF16.gguf
 ```
 
 The same warning as above applies: a part that fails its checksum is a bad
 download, not a wrong hash. Do not edit the expected hashes to match it.
 
-`PTQ1_0` (1.75 bpw, 5.54 GiB) is the **smaller** of the two servable GGUF bands.
-`PQ2_0` (~7.2 GB) is higher quality and is **not** mirrored here — if you have the
-memory for it, fetch it from Hugging Face. `F16` (53.8 GB) is not mirrored either.
+`PTQ1_0` (1.75 bpw, 5.54 GiB) is the **smaller** of the two servable GGUF bands
+and is the one `serve-gguf.sh` serves by default. `PQ2_0` (2-bit product quant,
+6.71 GiB) is the higher-quality band and is mirrored here too; point `BONSAI_GGUF`
+at it to serve that one instead. Both were checked against the sha256 Hugging Face
+publishes, byte for byte — but only `PTQ1_0` has been through the known-answer run
+in this repo, so run the probe yourself before trusting `PQ2_0`.
+
+`F16` (53.8 GB) is **not** mirrored — it is larger than everything else here
+combined and no Mac can serve it.
+
+There is no 4-bit, 6-bit or 8-bit GGUF band and there cannot be one: these weights
+are natively ternary, so such a build would store ternary values in larger
+containers — roughly three times the bytes for identical information.
 
 ## Model Details
 

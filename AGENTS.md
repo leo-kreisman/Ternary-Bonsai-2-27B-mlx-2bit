@@ -55,7 +55,7 @@ A mirror of two Hugging Face artifacts for the same model:
 | Upstream | Runtime | Local |
 | --- | --- | --- |
 | `prism-ml/Ternary-Bonsai-2-27B-mlx-2bit` | MLX | `./assemble.sh` → `model.safetensors` (8,595,477,990 bytes) |
-| `prism-ml/Ternary-Bonsai-2-27B-gguf` | llama.cpp | `./assemble-gguf.sh` → `PTQ1_0` + `mmproj-Q8_0` |
+| `prism-ml/Ternary-Bonsai-2-27B-gguf` | llama.cpp | `./assemble-gguf.sh` → `PTQ1_0` + `PQ2_0` + `mmproj-Q8_0` (+ `mmproj-BF16` in `27B-projectors/`) |
 
 **No weights are in git** in either case; both assemblers download release
 parts (tag `weights-v1` and `gguf-v1`), verify each part against a pinned
@@ -152,6 +152,8 @@ Also: do not commit a `.gitattributes` from Hugging Face — it marks
 | **Everything (GGUF): set up, verify, smoke-test, serve** | `./serve-gguf.sh` (`--check` stops before serving) |
 | **Everything (MLX): set up, verify, smoke-test, serve** | `./serve-mlx.sh` (`--check` stops before serving) |
 | **Get the GGUF from this repo** — no Hugging Face | `./assemble-gguf.sh` (lands in `upstream-demo/models/bonsai2-gguf/27B/`) |
+| **Serve the higher-quality band** | `BONSAI_GGUF=…/27B/Ternary-Bonsai-2-27B-PQ2_0.gguf ./scripts/start_llama_server.sh` |
+| **Use the BF16 projector** | `BONSAI_MMPROJ=…/27B-projectors/Ternary-Bonsai-2-27B-mmproj-BF16.gguf …` |
 | **MLX, one prompt** | `cd upstream-demo && .venv-vlm/bin/python scripts/mlx_generate_bonsai2.py --model .. -p "..."` |
 | **MLX server** (new, untested) | `cd upstream-demo && .venv-vlm/bin/python scripts/mlx_server_bonsai2.py --model .. --port 8080` |
 | Install, **MLX only** — no `setup.sh` | SETUP.md **Step 2-alt** (two commands) |
@@ -163,6 +165,13 @@ Also: do not commit a `.gitattributes` from Hugging Face — it marks
 | Skip the redundant 8.6 GB MLX copy | `BONSAI_SKIP_MLX=1 sh scripts/download_models.sh` |
 | Serve, llama.cpp (tested, 8080) | `cd upstream-demo && ./scripts/start_llama_server.sh` |
 | One-off prompt via llama.cpp | `cd upstream-demo && ./scripts/run_llama.sh -p "..."` |
+
+`mmproj-BF16` is deliberately placed in `27B-projectors/`, **not** in `27B/`.
+`start_llama_server.sh:72` picks its projector with a first-match glob over
+`$GGUF_MODEL_DIR/*mmproj*.gguf`; `mmproj-BF16` sorts before `mmproj-Q8_0`, so
+putting it beside the model would silently switch every run to a projector the
+text-only smoke test never exercises. **Do not "tidy" it into `27B/`**, and do
+not widen that glob. Move it only with `BONSAI_MMPROJ=<path>`.
 
 Environment variables: `PORT` (not `BONSAI_PORT`), `BONSAI_HOST`, `BONSAI_CTX`,
 `BONSAI_KV4`, `BONSAI_MMPROJ_CPU`, `BONSAI_NGL`. Full list in

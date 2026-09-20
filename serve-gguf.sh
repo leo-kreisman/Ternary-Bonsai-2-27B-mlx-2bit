@@ -13,7 +13,7 @@
 #
 # Why this exists next to serve-mlx.sh: this path touches no host that needs a
 # token, no Python virtualenv, and no compiler. The whole install is a 12 MB
-# prebuilt binary tarball from GitHub plus the two GGUF files, and the demo's
+# prebuilt binary tarball from GitHub plus the mirrored GGUF files, and the demo's
 # own start_llama_server.sh finds them because they sit exactly where its
 # downloader would have put them:
 #
@@ -26,13 +26,15 @@
 #      for a token and pulls ~7.8 GB. None of that is needed for the llama.cpp
 #      backend, so this script never calls setup.sh.
 #
-#   2. The 5.95 GB PTQ1_0 band is over GitHub's 2 GiB per-file cap and is not
-#      in git, so it ships as three release parts. ./assemble-gguf.sh fetches,
-#      verifies and concatenates them, and this script calls it.
+#   2. Neither servable band is in git -- PTQ1_0 (5.95 GB) and PQ2_0 (7.21 GB)
+#      are both over GitHub's 2 GiB per-file cap, so they ship as three and four
+#      release parts. ./assemble-gguf.sh fetches, verifies and concatenates
+#      them, and this script calls it. This script serves PTQ1_0, the smaller
+#      band; point BONSAI_GGUF at PQ2_0 to serve that one instead.
 #
-#   3. Bonsai 2's band needs the Prism fork's kernels. A mainline llama.cpp
-#      build will not read PTQ1_0 at all, so the prebuilt binary is fetched
-#      from PrismML-Eng/llama.cpp at the pinned tag rather than built or
+#   3. Bonsai 2's bands need the Prism fork's kernels. A mainline llama.cpp
+#      build will not read PTQ1_0 or PQ2_0 at all, so the prebuilt binary is
+#      fetched from PrismML-Eng/llama.cpp at the pinned tag rather than built or
 #      borrowed from PATH.
 #
 # And it will not start the server until a known-answer prompt comes back
@@ -101,7 +103,7 @@ esac
 # ---------------------------------------------------------------- 2. weights
 say "2/5  weights"
 if [ -f "$MODEL" ] && [ -f "$MMPROJ" ]; then
-  note "both files are present; verifying (hashes 6.6 GB, about 30 s)"
+  note "the mirrored files are present; verifying (hashes ~14.7 GB, about 60 s)"
 else
   note "GGUF files are not here; fetching the release parts (~6.6 GB)"
 fi
@@ -163,7 +165,7 @@ case "$(printf '%s' "$PROBE_OUT" | tr '[:upper:]' '[:lower:]')" in
   That is the failure this repository exists to catch. Do not serve it, and do
   not conclude the setup is broken: check, in this order,
     1. git status --short          any modified file, especially config.json
-    2. ./assemble-gguf.sh --verify the two GGUF files against the published hashes
+    2. ./assemble-gguf.sh --verify the mirrors against the published hashes
     3. the 'Model:' line the server prints -- it must be the PTQ1_0 band"
     ;;
 esac

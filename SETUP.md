@@ -197,7 +197,8 @@ Downloads into `models/bonsai2-gguf/27B/`:
 ./serve-gguf.sh --no-vision  # text only
 ```
 
-`serve-gguf.sh` fetches the two GGUF files from this repo's own release
+`serve-gguf.sh` fetches both GGUF bands and both vision projectors from this
+repo's own release
 (`gguf-v1`), verifies every part against a pinned sha256, places them in
 `models/bonsai2-gguf/27B/`, fetches the prebuilt Prism llama.cpp binary, runs a
 known-answer prompt, and only then starts the server. **Nothing in that
@@ -217,19 +218,22 @@ Just the weights, without serving:
 | File | Bytes | Ships as |
 | --- | ---: | --- |
 | `Ternary-Bonsai-2-27B-PTQ1_0.gguf` | 5,946,648,928 | 3 parts (`part-0`…`part-2`), concatenated |
+| `Ternary-Bonsai-2-27B-PQ2_0.gguf` | 7,206,168,928 | 4 parts (`part-0`…`part-3`), concatenated |
 | `Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf` | 629,246,976 | whole — one asset |
+| `Ternary-Bonsai-2-27B-mmproj-BF16.gguf` | 931,145,856 | whole — one asset |
 
-Both land in `upstream-demo/models/bonsai2-gguf/27B/`, the exact directory
+All four land in `upstream-demo/models/bonsai2-gguf/27B/`, the exact directory
 `download_models.sh` would have used. That is deliberate: `start_llama_server.sh`
 then finds the model through `select_model_gguf`, which already knows the
 `*-PTQ1_0.gguf` pattern (`scripts/common.sh:136`), and finds the projector
 through its own `*mmproj*.gguf` glob (`:72`). **No environment variables are
 needed, and no new code path is introduced.**
 
-`F16` (53.8 GB) and `PQ2_0` (7.2 GB) are **not** mirrored. `PTQ1_0` is the
-smaller of the two servable bands, which is why it is the one that fits a
-machine that cannot hold the 8.6 GB MLX pack. If you want `PQ2_0`'s quality and
-have the memory for it, get it from Hugging Face with Step 3.
+`F16` (53.8 GB) is **not** mirrored — it is larger than every other artifact
+here combined and serves no purpose a Mac can use. Both servable bands are, so
+you can pick quality (`PQ2_0`) or size (`PTQ1_0`) without touching Hugging Face.
+Note that **both need the Prism fork of llama.cpp** — see the matrix above;
+neither runs on stock mainline.
 
 ### If the GGUF files are already on disk, anywhere
 
@@ -459,8 +463,8 @@ says nothing about the file. Verify integrity properly instead:
 `download_models.sh:96` pulling `prism-ml/Ternary-Bonsai-2-27B-gguf` is the
 *upstream* path, and it is still what `setup.sh` does — that is the design, not
 a leak. But it is no longer the only way to get the GGUF: this repo's `gguf-v1`
-release carries the `PTQ1_0` band and the projector, and `./assemble-gguf.sh`
-fetches them from GitHub with no Hugging Face contact.
+release carries both servable bands (`PTQ1_0`, `PQ2_0`) and both projectors, and
+`./assemble-gguf.sh` fetches them from GitHub with no Hugging Face contact.
 
 So if you are seeing Hugging Face traffic at Step 3, nothing is wrong — you are
 just on the path that downloads from upstream. To avoid the call entirely, use

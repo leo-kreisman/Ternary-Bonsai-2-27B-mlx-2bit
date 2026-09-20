@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """Split the Bonsai 2 GGUF bands into <2 GiB Release parts and hash-pin the assembler.
 
-GitHub caps a single file at 2 GiB for Release assets. The PTQ1_0 band is
-5,946,648,928 bytes (5.54 GiB), so it is cut into three equal byte-range parts;
-the Q8_0 vision projector is 629,246,976 bytes and ships whole, as one asset.
+GitHub caps a single file at 2 GiB for Release assets, so both main bands are cut
+into equal byte-range parts: PTQ1_0 (5,946,648,928 bytes, 5.54 GiB) into three,
+and PQ2_0 (7,206,168,928 bytes, 6.71 GiB) into four. Both vision projectors ship
+whole -- mmproj-Q8_0 at 629,246,976 bytes and mmproj-BF16 at 931,145,856 bytes.
 Concatenating the parts reproduces the Hugging Face original byte for byte.
+
+There is deliberately no 4-bit, 6-bit or 8-bit band here, and there is nothing to
+add: these weights are natively ternary (~1.58 bpw), so a Q4_K_M/Q6_K/Q8_0 of
+them would store ternary values in larger containers -- roughly three times the
+bytes for the same information. No such build is published upstream, by prism-ml
+or by anyone else.
 
 Single streaming pass: each source is read once while its whole-file hash and
 every part's hash are computed, so a 5.5 GB file is never held in memory.
@@ -38,7 +45,8 @@ DEFAULT_SOURCE_REPO = "prism-ml/Ternary-Bonsai-2-27B-gguf"
 DEFAULT_SOURCE_REV = "6ed5e12bf84b7a63069882c91dd9e9218647d17b"
 DEFAULT_TAG = "gguf-v1"
 
-# (file name, whole-file sha256 as published on Hugging Face, part count).
+# (file name, whole-file sha256 as published on Hugging Face, part count,
+#  destination subdirectory under DEST -- "" for the model directory itself).
 #
 # The sha256 is the LFS oid from
 #   /api/models/<repo>/tree/<rev>?recursive=true   ->  entry.lfs.oid
@@ -47,16 +55,39 @@ DEFAULT_TAG = "gguf-v1"
 # content hash, and pinning it here rejects every correct download (it did,
 # for both files, before this was corrected).
 # Order is the order the assembler lists them in.
-DEFAULT_SHARDS: list[tuple[str, str, int]] = [
+#
+# Why mmproj-BF16 gets a subdirectory: start_llama_server.sh picks the projector
+# with `for _mp in $GGUF_MODEL_DIR/*mmproj*.gguf; do ...; break; done`
+# (:72-74), i.e. the FIRST glob match wins. Sorted, "mmproj-BF16" sorts before
+# "mmproj-Q8_0", so dropping BF16 beside the model would silently switch every
+# run from the tested Q8_0 projector to the untested BF16 one -- and the
+# smoke-test probe is text-only, so it would not catch it. Keeping BF16 one
+# directory over leaves the tested path exactly as it was while still shipping
+# the bytes; point BONSAI_MMPROJ at it to use it.
+DEFAULT_SHARDS: list[tuple[str, str, int, str]] = [
     (
         "Ternary-Bonsai-2-27B-PTQ1_0.gguf",
         "53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3",
         3,
+        "",
+    ),
+    (
+        "Ternary-Bonsai-2-27B-PQ2_0.gguf",
+        "3907dc1658db1f78a9826bf8d5bcb8dc65db0d466388937af57f2294fae62ec1",
+        4,
+        "",
     ),
     (
         "Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf",
         "6807ede61d570bb86ba34b756a0fa109edc33668604de867c6ea6d8f1d631903",
         1,
+        "",
+    ),
+    (
+        "Ternary-Bonsai-2-27B-mmproj-BF16.gguf",
+        "e287342d92332fa3577ed1d42e921dac9370c08da58ba9337fa450f6cc76cfd7",
+        1,
+        "27B-projectors",
     ),
 ]
 
@@ -115,7 +146,7 @@ def split_shard(src: Path, out_dir: Path, parts: int) -> tuple[str, list[tuple[s
 
 
 def render_block(
-    shards: list[tuple[str, int]],
+    shards: list[tuple[str, int, str]],
     shard_hashes: dict[str, str],
     part_hashes: dict[str, str],
 ) -> str:
@@ -124,15 +155,27 @@ def render_block(
     lines.append("")
     lines.append("shard_parts() {")
     lines.append('  case "$1" in')
-    for name, parts in shards:
+    for name, parts, _sub in shards:
         lines.append(f'    {name}) echo "{parts}" ;;')
+    lines.append('    *) echo "unknown shard: $1" >&2; return 1 ;;')
+    lines.append("  esac")
+    lines.append("}")
+    lines.append("")
+    lines.append("# Subdirectory under DEST this shard lands in; empty means DEST itself.")
+    lines.append("# Non-empty is used to keep a file out of start_llama_server.sh's")
+    lines.append("# `*mmproj*.gguf` glob, which takes the first match and would otherwise")
+    lines.append("# silently change which projector loads. See split_gguf.py.")
+    lines.append("shard_dest_subdir() {")
+    lines.append('  case "$1" in')
+    for name, _parts, sub in shards:
+        lines.append(f'    {name}) echo "{sub}" ;;')
     lines.append('    *) echo "unknown shard: $1" >&2; return 1 ;;')
     lines.append("  esac")
     lines.append("}")
     lines.append("")
     lines.append("shard_expected_sha() {")
     lines.append('  case "$1" in')
-    for name, _ in shards:
+    for name, _parts, _sub in shards:
         lines.append(f'    {name}) echo "{shard_hashes[name]}" ;;')
     lines.append('    *) echo "unknown shard: $1" >&2; return 1 ;;')
     lines.append("  esac")
@@ -172,20 +215,21 @@ def main() -> int:
 
     args.out.mkdir(parents=True, exist_ok=True)
 
-    for name, _, _ in DEFAULT_SHARDS:
+    for name, _, _, _ in DEFAULT_SHARDS:
         if not (args.src / name).is_file():
             print(f"missing source file: {args.src / name}", file=sys.stderr)
             return 1
 
-    shards_meta: list[tuple[str, int]] = []
+    shards_meta: list[tuple[str, int, str]] = []
     shard_hashes: dict[str, str] = {}
     part_hashes: dict[str, str] = {}
     total = 0
 
-    for name, expected, parts in DEFAULT_SHARDS:
+    for name, expected, parts, sub in DEFAULT_SHARDS:
         src = args.src / name
         size = src.stat().st_size
-        print(f"==> {name} ({size:,} bytes, {parts} part{'s' if parts != 1 else ''})")
+        print(f"==> {name} ({size:,} bytes, {parts} part{'s' if parts != 1 else ''}"
+              f"{', -> ' + sub + '/' if sub else ''})")
 
         if args.verify_only:
             h = hashlib.sha256()
@@ -211,7 +255,7 @@ def main() -> int:
             )
             return 1
 
-        shards_meta.append((name, parts))
+        shards_meta.append((name, parts, sub))
         shard_hashes[name] = digest
         for asset_name, asset_digest, written in assets:
             if written > GIB:
@@ -230,9 +274,11 @@ def main() -> int:
     with manifest.open("w") as fh:
         fh.write(f"# {args.variant} — release asset checksums (sha256)\n")
         fh.write(f"# Source: huggingface.co/{args.source_repo} @ {args.source_rev}\n")
-        fh.write("# PTQ1_0 ships as .part-N; concatenate in part-N order.\n")
-        fh.write("# The projector ships whole. Both land in\n")
-        fh.write("# upstream-demo/models/bonsai2-gguf/27B/ via assemble-gguf.sh.\n\n")
+        fh.write("# PTQ1_0 and PQ2_0 ship as .part-N; concatenate in part-N order.\n")
+        fh.write("# Both projectors ship whole. The model and mmproj-Q8_0 land in\n")
+        fh.write("# upstream-demo/models/bonsai2-gguf/27B/ via assemble-gguf.sh;\n")
+        fh.write("# mmproj-BF16 lands in 27B-projectors/ beside it, kept out of the\n")
+        fh.write("# projector glob on purpose -- see the comment in assemble-gguf.sh.\n\n")
         for name, digest in part_hashes.items():
             fh.write(f"{digest}  {name}\n")
         fh.write("\n# Reassembled whole-file hashes (match Hugging Face)\n")

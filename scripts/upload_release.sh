@@ -100,18 +100,30 @@ upload_asset() {
     return 0
   fi
 
-  # Skip if an asset of this name already exists at the right size.
+  # Skip only if an asset of this name is fully UPLOADED at the right size.
+  #
+  # Size alone is not evidence. A record whose upload never finished -- state
+  # "starter", or anything else that is not "uploaded" -- still reports the full
+  # intended size while holding no bytes. Skipping on size alone therefore
+  # publishes a zero-byte part and prints "[skip] already uploaded", which reads
+  # like success. Gate on state, and delete a stale record so the re-upload is
+  # not rejected on the name.
   have="$(api "${API}/releases/${release_id}/assets?per_page=100" \
     | python3 -c '
 import json,sys
 name=sys.argv[1]
 for a in json.load(sys.stdin):
     if a.get("name")==name:
-        print(a.get("size",0)); break
+        print(a.get("state","?"), a.get("size",0), a.get("id",0)); break
 ' "$base")"
-  if [ "$have" = "$size" ]; then
-    printf '    [skip]   %-48s already uploaded\n' "$base"
-    return 0
+  if [ -n "$have" ]; then
+    read -r _state _size _id <<< "$have"
+    if [ "$_state" = "uploaded" ] && [ "$_size" = "$size" ]; then
+      printf '    [skip]   %-48s already uploaded\n' "$base"
+      return 0
+    fi
+    printf '    [stale]  %-48s state=%s size=%s -> deleting\n' "$base" "$_state" "$_size"
+    api -X DELETE "${API}/releases/${release_id}/assets/${_id}" >/dev/null
   fi
 
   printf '    [upload] %-48s %14d bytes\n' "$base" "$size"
