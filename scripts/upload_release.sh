@@ -123,7 +123,15 @@ for a in json.load(sys.stdin):
       return 0
     fi
     printf '    [stale]  %-48s state=%s size=%s -> deleting\n' "$base" "$_state" "$_size"
-    api -X DELETE "${API}/releases/${release_id}/assets/${_id}" >/dev/null
+    # The endpoint is /releases/assets/{id} -- NOT /releases/{release_id}/assets/{id}.
+    # The latter 404s, and because it was unguarded the stale record stayed put and
+    # the re-upload below failed with 422 already_exists, leaving the release
+    # serving the OLD file under the new name. Observed exactly that on gguf-v1.
+    _del="$(api -o /dev/null -w '%{http_code}' -X DELETE "${API}/releases/assets/${_id}")"
+    if [ "$_del" != "204" ]; then
+      printf '    [FAIL]   %s -> could not delete the stale asset (HTTP %s)\n' "$base" "$_del" >&2
+      return 1
+    fi
   fi
 
   printf '    [upload] %-48s %14d bytes\n' "$base" "$size"
